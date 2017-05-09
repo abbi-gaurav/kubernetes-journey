@@ -1,0 +1,302 @@
+* local set up
+** miniKube
+*** check status of minikube cluster
+#+BEGIN_SRC 
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube status
+minikubeVM: Stopped
+localkube: N/A
+#+END_SRC
+*** start minikube
+#+BEGIN_SRC 
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube start
+Starting local Kubernetes cluster...
+Kubectl is now configured to use the cluster.
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube status
+minikubeVM: Running
+localkube: Running
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube stop
+Stopping local Kubernetes cluster...
+Machine stopped.
+#+END_SRC
+** kubectl
+*** create deployment
+#+BEGIN_SRC 
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  kubectl run hello-minikube1 --image=gcr.io/google_containers/echoserver:1.4 --port=8080
+ deployment "hello-minikube1" created
+#+END_SRC
+*** expose deployment
+#+BEGIN_SRC 
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  kubectl expose deployment hello-minikube1 --type=NodePort
+service "hello-minikube1" exposed
+#+END_SRC
+*** get service url
+#+BEGIN_SRC 
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube service hello-minikube1 --url
+http://192.168.99.100:32619
+#+END_SRC
+* AWS setup
+** kops (*Kubernetes Operations*)
+*** used for installations, upgrades and management
+** Steps [0/5]
+- [-] create a kops user using *IAM*
+- [ ] assign administrator policy
+- [ ] create a bucket based on region where the cluster is to be installed
+- [ ] get a free domain from somewhere
+- [ ] use *Amazon Route 53* for DNS
+  - [ ] create hosted zone
+* pod basics
+** describes app running on container
+** 1 or more tightly coupled containers that makes up the app
+** Apps can communicate with each other using local port numbers
+** sample commands run
+#+BEGIN_SRC 
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pod
+NAME                         READY     STATUS              RESTARTS   AGE
+nodehelloworld.example.com   0/1       ContainerCreating   0          1m
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl describe pod nodehelloworld.example.com
+Name:           nodehelloworld.example.com
+Namespace:      default
+Node:           minikube/192.168.99.102
+Start Time:     Sun, 12 Feb 2017 19:10:56 +0100
+Labels:         app=helloworld
+Status:         Pending
+IP:
+Controllers:    <none>
+Containers:
+  k8s-demo:
+    Container ID:
+    Image:              gabbi/docker-demo
+    Image ID:
+    Port:               3000/TCP
+    State:              Waiting
+      Reason:           ContainerCreating
+    Ready:              False
+    Restart Count:      0
+    Volume Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-40xp3 (ro)
+    Environment Variables:      <none>
+Conditions:
+  Type          Status
+  Initialized   True
+  Ready         False
+  PodScheduled  True
+Volumes:
+  default-token-40xp3:
+    Type:       Secret (a volume populated by a Secret)
+    SecretName: default-token-40xp3
+QoS Class:      BestEffort
+Tolerations:    <none>
+Events:
+  FirstSeen     LastSeen        Count   From                    SubObjectPath                   Type            Reason          Message
+  ---------     --------        -----   ----                    -------------                   --------        ------          -------
+  1m            1m              1       {default-scheduler }                                    Normal          Scheduled       Successfully assigned nodehelloworld.example.com to minikube
+  1m            1m              1       {kubelet minikube}      spec.containers{k8s-demo}       Normal          Pulling         pulling image "gabbi/docker-demo"
+
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl port-forward nodehelloworld.example.com 8081:3000
+Forwarding from 127.0.0.1:8081 -> 3000
+Forwarding from [::1]:8081 -> 3000
+Handling connection for 8081
+
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl expose pod nodehelloworld.example.com --type=NodePort --name nodehelloworld-service
+service "nodehelloworld-service" exposed
+
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  minikube service nodehelloworld-service --url
+http://192.168.99.102:31475
+
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get service
+NAME                     CLUSTER-IP   EXTERNAL-IP   PORT(S)          AGE
+kubernetes               10.0.0.1     <none>        443/TCP          21m
+nodehelloworld-service   10.0.0.50    <nodes>       3000:31475/TCP   2m
+
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl attach nodehelloworld.example.com
+If you don't see a command prompt, try pressing enter.
+
+
+^C
+
+✘ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl exec nodehelloworld.example.com -- ls /app
+Dockerfile
+docker-compose.yml
+index-db.js
+index.js
+misc
+node_modules
+package.json
+
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl describe service nodehelloworld-service
+Name:                   nodehelloworld-service
+Namespace:              default
+Labels:                 app=helloworld
+Selector:               app=helloworld
+Type:                   NodePort
+IP:                     10.0.0.50
+Port:                   <unset> 3000/TCP
+NodePort:               <unset> 31475/TCP
+Endpoints:              172.17.0.4:3000
+Session Affinity:       None
+No events.
+#+END_SRC
+** manage a pod
+#+BEGIN_SRC 
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl create -f ./pod-helloworld.yml
+pod "nodehelloworld.example.com" created
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pods
+NAME                               READY     STATUS              RESTARTS   AGE
+hello-minikube1-1849020499-h1p1c   1/1       Running             0          7m
+nodehelloworld.example.com         0/1       ContainerCreating   0          3m
+#+END_SRC
+** useful pod commands
+[[file:./podCommands.png]]
+* architecture
+** diagram
+[[file:./kubernetes-architecture.png]]
+** node architecture
+* scaling
+** scaling options
+*** *stateless* apps can be scaled *horizontally*
+*** *stateful* can be scaled *vertically*
+** can be done using *replication controller*
+*** enusre specified number of pod replicas are running all the time
+*** automatic recreation on termination
+*** scale with file
+#+BEGIN_SRC 
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl scale --replicas=4 -f ./pod-replication-controller.yml
+replicationcontroller "helloworld-controller" scaled
+#+END_SRC
+*** scale using controller name
+#+BEGIN_SRC 
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get rc
+NAME                    DESIRED   CURRENT   READY     AGE
+helloworld-controller   4         4         4         9m
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl scale --replicas=1 rc/helloworld-controller
+replicationcontroller "helloworld-controller" scaled
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pods
+NAME                               READY     STATUS        RESTARTS   AGE
+hello-minikube1-1849020499-71npc   1/1       Running       0          14m
+helloworld-controller-2nm50        1/1       Running       0          9m
+helloworld-controller-95g66        1/1       Terminating   0          5m
+helloworld-controller-b4b7z        1/1       Terminating   0          7m
+helloworld-controller-n06pr        1/1       Terminating   0          5m
+#+END_SRC
+** *Replication set*
+*** supports new selector
+**** selection based on ~filtering~ according to a set of ~values~
+**** used by ~Deployment Object~
+* *Deployment object*
+** declaration that allows to do app deployments and updates
+** when using ~deployment object~, one can define state of the app
+*** kubernetes than make sure that the clusters matches your desired state
+** with DO, one can
+*** create
+*** update
+*** rolling update
+*** roll back
+*** Pause/resume
+** commands reference
+[[file:./deploymentCommands.png]]
+** commands run
+#+BEGIN_SRC 
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get deployments
+NAME              DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+hello-minikube1   1         1         1            1           6d
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get rs
+NAME                         DESIRED   CURRENT   READY     AGE
+hello-minikube1-1849020499   1         1         1         6d
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code 
+
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl rollout status deployment/helloworld-deployment
+deployment "helloworld-deployment" successfully rolled out
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl expose deployment helloworld-deployment --type=NodePort
+service "helloworld-deployment" exposed
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get service
+NAME                    CLUSTER-IP   EXTERNAL-IP   PORT(S)          AGE
+helloworld-deployment   10.0.0.243   <nodes>       3000:31425/TCP   25s
+kubernetes              10.0.0.1     <none>        443/TCP          7d
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl describe service helloworld-deployment
+Name:                   helloworld-deployment
+Namespace:              default
+Labels:                 app=helloworld
+Selector:               app=helloworld
+Type:                   NodePort
+IP:                     10.0.0.243
+Port:                   <unset> 3000/TCP
+NodePort:               <unset> 31425/TCP
+Endpoints:              172.17.0.5:3000,172.17.0.6:3000,172.17.0.7:3000 + 1 more...
+Session Affinity:       None
+No events.
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  minikube service helloword-deployment --url
+service 'helloword-deployment' could not be found running in namespace 'default' within kubernetes
+ ✘ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  minikube service helloworld-deployment --url
+http://192.168.99.102:31425
+#+END_SRC
+* Services
+** Pods are very dynamic.They come and go on the kubernetes cluster
+*** Replication controller : pods are terminated and created during scaling
+*** Deployments : while updating an image version, podsa are terminated and new pods take their place
+** Service is the logical bridge between pods and other services or end-users
+** =kubectl expose= creates a new service for the pod
+** creating a service : creates endpoint for the pod
+*** *ClusterIP* : virtual ip address reachable from within the cluster
+**** it is dynamic
+**** if need static, it should be defined in yml file for service
+*** *NodePort* : same on each port that is reachable externally
+*** *LoadBalancer* : from *cloud provider* will route external traffic to every node on the NodePort
+*** DNS Names
+**** *ExternalName* can provide DNS name for the service
+**** *DNS add-ons* needs to be enabled
+** *Example create service*
+#+BEGIN_SRC 
+/Users/gabbi/learning/udemy/kubernetes/code [gabbi@Gauravs-Air] [11:50]
+> kubectl create -f service-NodePort.yml
+service "helloworld-node-port" created
+
+/Users/gabbi/learning/udemy/kubernetes/code [gabbi@Gauravs-Air] [11:50]
+> minikube service helloworld-node-port --url
+http://192.168.99.100:31001
+
+/Users/gabbi/learning/udemy/kubernetes/code [gabbi@Gauravs-Air] [11:50]
+> http http://192.168.99.100:31001
+HTTP/1.1 200 OK
+
+kubectl describe service helloworld-node-port
+Name:                   helloworld-node-port
+Namespace:              default
+Labels:                 <none>
+Selector:               app=helloworld
+Type:                   NodePort
+IP:                     10.0.0.3
+Port:                   <unset> 31001/TCP
+NodePort:               <unset> 31001/TCP
+Endpoints:              172.17.0.4:3000
+Session Affinity:       None
+No events.
+#+END_SRC
+* Labels
+** key-value pairs similiar to tags in AWS
+** can be used to filter using *Label Selectors*
+** used on 
+*** pods
+*** nodes
+**** tag a node
+**** add *nodeSelector* to the pod configuration to run pod only on selected nodes
+**** pods will be in *pending state* until matching nodes are available
+** example 1
+#+BEGIN_SRC 
+kubectl label nodes node1 hardware=high-spec
+kubectl label nodes node1 hardware=low-spec
+
+#in pod yml under spec
+nodeSelector:
+  hardware: high-spec
+#+END_SRC
+** example 2
+#+BEGIN_SRC 
+ kubectl get nodes --show-labels
+NAME       STATUS    AGE       LABELS
+minikube   Ready     50m       beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/hostname=minikube
+
+kubectl label nodes minikube hardware=high-spec
+node "minikube" labeled
+
+
+#+END_SRC
