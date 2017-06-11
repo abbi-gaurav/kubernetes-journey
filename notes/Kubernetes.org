@@ -229,6 +229,12 @@ service 'helloword-deployment' could not be found running in namespace 'default'
  ✘ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  minikube service helloworld-deployment --url
 http://192.168.99.102:31425
 #+END_SRC
+** edit deployment
+#+BEGIN_SRC 
+kubectl edit deployment/healthcheck-deployment
+#+END_SRC
+*** it opens a editor where we can change the settings and save them
+*** *might not change the actual source file*
 * Services
 ** Pods are very dynamic.They come and go on the kubernetes cluster
 *** Replication controller : pods are terminated and created during scaling
@@ -300,3 +306,25 @@ node "minikube" labeled
 
 
 #+END_SRC
+* health checks
+** to detect application malfunctions
+** 2 types
+*** a periodic command in the container
+*** periodic checks on the URL (HTTP)
+** if failed, pod is terminated and new one is launched
+* Secrets
+** distribute *credentials, keys, passwords or secret data* to pods
+** used by k8s for internal APIs
+** can be used to provide secrets to application
+** one can use _other ways_ if not using *Secrets* e.g. /external vault services/
+** Usage patterns
+*** as *environment variables*
+[[file:./secrets_env_pod.png]]
+*** as a *file* in pod
+[[file:./secrets_volume_pod.png]]
+**** uses *volumes* mounted on container which has *files*
+**** *files* can contain *dotenv* or other files based on how secrets are read
+*** from *external second image*
+** Generation
+*** using command line
+*** using yml file
