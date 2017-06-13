@@ -328,3 +328,19 @@ node "minikube" labeled
 ** Generation
 *** using command line
 *** using yml file
+* Wen UI
+** provides similiar functionality as _kubectl_
+** commands
+#+BEGIN_SRC sh
+  kubectl create -f https://<path to kubernetes0dashboard>
+
+  #to see the password
+  kubectl config view
+#+END_SRC
+* Service Discovery
+** DNS is a built-in service since K8s 1.3
+[[file:./dns.png]]                      [[file:./dns-internal.png]]   
+*** can be used to find other services running on same cluster
+*** to make it work, pod will need a service defintion
+*** containers in same pod can contact each other using localhost:port. Don't need DNS
+*** use =nslookup= to get the IP
