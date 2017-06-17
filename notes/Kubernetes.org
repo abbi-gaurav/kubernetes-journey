@@ -328,11 +328,11 @@ node "minikube" labeled
 ** Generation
 *** using command line
 *** using yml file
-* Wen UI
+* Web UI
 ** provides similiar functionality as _kubectl_
 ** commands
 #+BEGIN_SRC sh
-  kubectl create -f https://<path to kubernetes0dashboard>
+  kubectl create -f https://<path to kubernetes-dashboard>
 
   #to see the password
   kubectl config view
@@ -344,3 +344,31 @@ node "minikube" labeled
 *** to make it work, pod will need a service defintion
 *** containers in same pod can contact each other using localhost:port. Don't need DNS
 *** use =nslookup= to get the IP
+* configMap
+** can be used for non-secret config parameters
+** *key-value pairs*
+** can be read by the app using
+*** Environment variables
+[[file:./configMap-using-env.png]]
+*** container command line arguments in pod configurations
+*** volumes
+[[file:./configMap-specify-in-pod.png]]
+** can also contain a full configuration *file* 
+*** example
+[[file:./configMap-using-file.png]]
+*** file then can be mounted using volumes
+** commands
+#+BEGIN_SRC sh
+  kubectl create configmap nginx-config --from-file=./configMap/reverseproxy.conf
+
+  kubectl get configmap
+
+  kubectl get configmap nginx-config -o yaml
+#+END_SRC
+* ingress
+[[file:./ingress.png]]
+** allows *inbound connections* to the cluster
+** alternative to load balancer and Node ports
+*** expose services to be accessed from outside cluster
+** run your own *ingress controller*
+** default ingress controller or one can write own
