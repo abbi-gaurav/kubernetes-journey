@@ -329,6 +329,11 @@ node "minikube" labeled
 *** using command line
 *** using yml file
 * Web UI
+** To access
+#+BEGIN_SRC 
+minikube dashboard --url
+http://192.168.99.100:30000
+#+END_SRC
 ** provides similiar functionality as _kubectl_
 ** commands
 #+BEGIN_SRC sh
@@ -372,3 +377,55 @@ node "minikube" labeled
 *** expose services to be accessed from outside cluster
 ** run your own *ingress controller*
 ** default ingress controller or one can write own
+* Volumes
+** how it works
+[[file:./use-volumes.png]]
+** for stateful apps
+** Persistent Volumes in kubernetes allow to attach volumes to containers that exist even after container is destroyed
+** If node stops working, pod is scheduled to another node and same volume is used
+*** *works only* for nodes in the *same availability zone*
+** Aws Ebs example
+[[file:./volume-aws-ebs.png]]
+** Provisioning
+*** *AWS Plugin* can provision storage. It create volume before attaching them to a container/node.
+*** using *StorageClass*
+*** define storage
+[[file:./volume-storage-class.png]]
+*** volume claim
+[[file:./volume-claim.png]]
+*** use volume claim in pod
+[[file:./volume-claim-in-pod.png]]
+* PetSets _Stateful distributed apps on K8s cluster_
+** *stable/static Pod hostname*
+*** podname-0, podname-1
+** stateful apps that require multiple volumes based on ordinal number
+*** deleting/scaling down PetSet will not delete volume
+** allow app to use DNS to find other servers
+*** One running node of a PetSet is called *Pet*
+** _order startup and teardown of pets_
+* Daemon Sets
+** ensure that each node on the cluster runs the same pod resource
+** useful when one wants to run certains pods on each node
+** node starts, also start the pod
+** node stops, do not reschdule the pod on another node
+** use cases
+*** logging aggregators
+*** monitoring
+*** load balancers / proxy / api gateway
+*** any other similiar app per host
+** example
+[[file:./daemon-set.png]]
+* Resource Usage monitoring
+** how it works
+[[file:./resoure-monitoring.png]]
+** Heapster
+*** enables *Container Cluster Monitoring* *Performance Analysis*
+*** pre-requisite for *pod auto-scaling*
+*** export metrics via *REST*
+*** can be used with differnt backends (InfluxDB, Kafka and others)
+*** Grafana for view
+#+BEGIN_SRC 
+minikube service monitoring-grafana --namespace=kube-system --url
+http://192.168.99.100:30869
+#+END_SRC
+*** Kubernetes dashboard will also show graphs
