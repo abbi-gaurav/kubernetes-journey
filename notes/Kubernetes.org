@@ -435,3 +435,42 @@ http://192.168.99.100:30869
 ** scaling based on CPU is OOB
 *** also possible for custom metrics
 *** ENABLE_CUSTOM_METRICS
+* Master architecture
+[[file:./master-architecture.png]]
+** REST / Server
+- Provides REST APIs
+- Stores the definitions on =etcd=
+** Scheduler
+- Takes care of intiating deployments on nodes
+** Controller Manager : Various kinds of controllers
+- Node controller
+- Replication controller
+- ......
+
+* Resource Quotas
+** control the resources allocated to teams
+** deivide cluster into namespaces and assing quotas to it.
+** Use objects
+- ResoureQuotas
+- ObjectQuotas
+** container can specify
+- request capacity : minimum capacity pod needs
+- capacity limits : limits beyond which container cannot utilize resources
+** Resource limits that can be set by admin
+[[file:./resource-quotas-admin.png]]
+** Object quotas that can be set by admin
+[[file:./object-quotas-admin.png]]
+* Namespaces
+- allow to create virtual clusters
+- logically separate the cluster
+- OOB namespaces
+  - /default/
+  - /kube-system/
+** commands
+- =kubectl get namespaces=
+- =kubectl create namespace myspace=
+- set default namespace to launch resources in
+  - =export context = $(kubectl config view|awk '/current-context/{print $2}')=
+  - =kubectl config set-context $CONTEXT --namespace=myspace=
+** Using namespaces to set quotas
+[[file:./namespace-resource-quotas.png]]  [[file:./namespace-object-quotas.png]]
