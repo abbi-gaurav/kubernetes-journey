@@ -429,3 +429,9 @@ minikube service monitoring-grafana --namespace=kube-system --url
 http://192.168.99.100:30869
 #+END_SRC
 *** Kubernetes dashboard will also show graphs
+* Auto Scaling
+** based on metrics *by heapster*
+** deployment, replication controller, replica set
+** scaling based on CPU is OOB
+*** also possible for custom metrics
+*** ENABLE_CUSTOM_METRICS
