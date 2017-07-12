@@ -1,12 +1,11 @@
-* local set up
-** miniKube
-*** check status of minikube cluster
+* minikube
+** check status of minikube cluster
 #+BEGIN_SRC 
 gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube status
 minikubeVM: Stopped
 localkube: N/A
 #+END_SRC
-*** start minikube
+** start minikube
 #+BEGIN_SRC 
 gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube start
 Starting local Kubernetes cluster...
@@ -18,26 +17,25 @@ localkube: Running
 Stopping local Kubernetes cluster...
 Machine stopped.
 #+END_SRC
-** kubectl
-*** create deployment
+* kubectl
+** create deployment
 #+BEGIN_SRC 
  gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  kubectl run hello-minikube1 --image=gcr.io/google_containers/echoserver:1.4 --port=8080
  deployment "hello-minikube1" created
 #+END_SRC
-*** expose deployment
+** expose deployment
 #+BEGIN_SRC 
  gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  kubectl expose deployment hello-minikube1 --type=NodePort
 service "hello-minikube1" exposed
 #+END_SRC
-*** get service url
+** get service url
 #+BEGIN_SRC 
 gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube service hello-minikube1 --url
 http://192.168.99.100:32619
 #+END_SRC
 * AWS setup
-** kops (*Kubernetes Operations*)
-*** used for installations, upgrades and management
-** Steps [0/5]
+** kops (*Kubernetes Operations*) used for installations, upgrades and management
+** Steps on AWS [0/5]
 - [-] create a kops user using *IAM*
 - [ ] assign administrator policy
 - [ ] create a bucket based on region where the cluster is to be installed
@@ -45,12 +43,12 @@ http://192.168.99.100:32619
 - [ ] use *Amazon Route 53* for DNS
   - [ ] create hosted zone
 * pod basics
-** describes app running on container
-** 1 or more tightly coupled containers that makes up the app
-** Apps can communicate with each other using local port numbers
+- describes app running on container
+- 1 or more tightly coupled containers that makes up the app
+- Apps can communicate with each other using local port numbers
 ** sample commands run
 #+BEGIN_SRC 
- gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pod
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pod
 NAME                         READY     STATUS              RESTARTS   AGE
 nodehelloworld.example.com   0/1       ContainerCreating   0          1m
 gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl describe pod nodehelloworld.example.com
@@ -153,17 +151,18 @@ nodehelloworld.example.com         0/1       ContainerCreating   0          3m
 ** node architecture
 * scaling
 ** scaling options
-*** *stateless* apps can be scaled *horizontally*
-*** *stateful* can be scaled *vertically*
+- *stateless* apps can be scaled *horizontally*
+- *stateful* can be scaled *vertically*
 ** can be done using *replication controller*
-*** enusre specified number of pod replicas are running all the time
-*** automatic recreation on termination
-*** scale with file
+- enusre specified number of pod replicas are running all the time
+- automatic recreation on termination
+** commands run
+- scale with file
 #+BEGIN_SRC 
 gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl scale --replicas=4 -f ./pod-replication-controller.yml
 replicationcontroller "helloworld-controller" scaled
 #+END_SRC
-*** scale using controller name
+- scale using controller name
 #+BEGIN_SRC 
  gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get rc
 NAME                    DESIRED   CURRENT   READY     AGE
@@ -178,20 +177,19 @@ helloworld-controller-95g66        1/1       Terminating   0          5m
 helloworld-controller-b4b7z        1/1       Terminating   0          7m
 helloworld-controller-n06pr        1/1       Terminating   0          5m
 #+END_SRC
-** *Replication set*
-*** supports new selector
-**** selection based on ~filtering~ according to a set of ~values~
-**** used by ~Deployment Object~
+** *Replication set* supports new selector
+- selection based on ~filtering~ according to a set of ~values~
+- used by ~Deployment Object~
 * *Deployment object*
 ** declaration that allows to do app deployments and updates
 ** when using ~deployment object~, one can define state of the app
-*** kubernetes than make sure that the clusters matches your desired state
+- kubernetes than make sure that the clusters matches your desired state
 ** with DO, one can
-*** create
-*** update
-*** rolling update
-*** roll back
-*** Pause/resume
+- create
+- update
+- rolling update
+- roll back
+- Pause/resume
 ** commands reference
 [[file:./deploymentCommands.png]]
 ** commands run
@@ -233,23 +231,23 @@ http://192.168.99.102:31425
 #+BEGIN_SRC 
 kubectl edit deployment/healthcheck-deployment
 #+END_SRC
-*** it opens a editor where we can change the settings and save them
-*** *might not change the actual source file*
+- it opens a editor where we can change the settings and save them
+- *might not change the actual source file*
 * Services
 ** Pods are very dynamic.They come and go on the kubernetes cluster
-*** Replication controller : pods are terminated and created during scaling
-*** Deployments : while updating an image version, podsa are terminated and new pods take their place
+- Replication controller : pods are terminated and created during scaling
+- Deployments : while updating an image version, podsa are terminated and new pods take their place
 ** Service is the logical bridge between pods and other services or end-users
 ** =kubectl expose= creates a new service for the pod
 ** creating a service : creates endpoint for the pod
-*** *ClusterIP* : virtual ip address reachable from within the cluster
-**** it is dynamic
-**** if need static, it should be defined in yml file for service
-*** *NodePort* : same on each port that is reachable externally
-*** *LoadBalancer* : from *cloud provider* will route external traffic to every node on the NodePort
-*** DNS Names
-**** *ExternalName* can provide DNS name for the service
-**** *DNS add-ons* needs to be enabled
+- *ClusterIP* : virtual ip address reachable from within the cluster
+  - it is dynamic
+  - if need static, it should be defined in yml file for service
+- *NodePort* : same on each port that is reachable externally
+- *LoadBalancer* : from *cloud provider* will route external traffic to every node on the NodePort
+- DNS Names
+  - *ExternalName* can provide DNS name for the service
+  - *DNS add-ons* needs to be enabled
 ** *Example create service*
 #+BEGIN_SRC 
 /Users/gabbi/learning/udemy/kubernetes/code [gabbi@Gauravs-Air] [11:50]
@@ -281,11 +279,11 @@ No events.
 ** key-value pairs similiar to tags in AWS
 ** can be used to filter using *Label Selectors*
 ** used on 
-*** pods
-*** nodes
-**** tag a node
-**** add *nodeSelector* to the pod configuration to run pod only on selected nodes
-**** pods will be in *pending state* until matching nodes are available
+- pods
+- nodes
+  - tag a node
+  - add *nodeSelector* to the pod configuration to run pod only on selected nodes
+  - pods will be in *pending state* until matching nodes are available
 ** example 1
 #+BEGIN_SRC 
 kubectl label nodes node1 hardware=high-spec
@@ -309,8 +307,8 @@ node "minikube" labeled
 * health checks
 ** to detect application malfunctions
 ** 2 types
-*** a periodic command in the container
-*** periodic checks on the URL (HTTP)
+- a periodic command in the container
+- periodic checks on the URL (HTTP)
 ** if failed, pod is terminated and new one is launched
 * Secrets
 ** distribute *credentials, keys, passwords or secret data* to pods
@@ -318,16 +316,16 @@ node "minikube" labeled
 ** can be used to provide secrets to application
 ** one can use _other ways_ if not using *Secrets* e.g. /external vault services/
 ** Usage patterns
-*** as *environment variables*
-[[file:./secrets_env_pod.png]]
-*** as a *file* in pod
-[[file:./secrets_volume_pod.png]]
-**** uses *volumes* mounted on container which has *files*
-**** *files* can contain *dotenv* or other files based on how secrets are read
-*** from *external second image*
+- as *environment variables*
+  - [[file:./secrets_env_pod.png]]
+- as a *file* in pod
+  - [[file:./secrets_volume_pod.png]]
+  - uses *volumes* mounted on container which has *files*
+  - *files* can contain *dotenv* or other files based on how secrets are read
+- from *external second image*
 ** Generation
-*** using command line
-*** using yml file
+- using command line
+- using yml file
 * Web UI
 ** To access
 #+BEGIN_SRC 
@@ -345,23 +343,22 @@ http://192.168.99.100:30000
 * Service Discovery
 ** DNS is a built-in service since K8s 1.3
 [[file:./dns.png]]                      [[file:./dns-internal.png]]   
-*** can be used to find other services running on same cluster
-*** to make it work, pod will need a service defintion
-*** containers in same pod can contact each other using localhost:port. Don't need DNS
-*** use =nslookup= to get the IP
+- can be used to find other services running on same cluster
+- to make it work, pod will need a service defintion
+- containers in same pod can contact each other using localhost:port. Don't need DNS
+- use =nslookup= to get the IP
 * configMap
 ** can be used for non-secret config parameters
 ** *key-value pairs*
 ** can be read by the app using
-*** Environment variables
-[[file:./configMap-using-env.png]]
-*** container command line arguments in pod configurations
-*** volumes
-[[file:./configMap-specify-in-pod.png]]
-** can also contain a full configuration *file* 
-*** example
-[[file:./configMap-using-file.png]]
-*** file then can be mounted using volumes
+- Environment variables
+  - [[file:./configMap-using-env.png]]
+- container command line arguments in pod configurations
+- volumes
+  - [[file:./configMap-specify-in-pod.png]]
+- can also contain a full configuration *file* 
+  - [[file:./configMap-using-file.png]]
+  - file then can be mounted using volumes
 ** commands
 #+BEGIN_SRC sh
   kubectl create configmap nginx-config --from-file=./configMap/reverseproxy.conf
@@ -374,7 +371,7 @@ http://192.168.99.100:30000
 [[file:./ingress.png]]
 ** allows *inbound connections* to the cluster
 ** alternative to load balancer and Node ports
-*** expose services to be accessed from outside cluster
+- expose services to be accessed from outside cluster
 ** run your own *ingress controller*
 ** default ingress controller or one can write own
 * Volumes
@@ -383,25 +380,25 @@ http://192.168.99.100:30000
 ** for stateful apps
 ** Persistent Volumes in kubernetes allow to attach volumes to containers that exist even after container is destroyed
 ** If node stops working, pod is scheduled to another node and same volume is used
-*** *works only* for nodes in the *same availability zone*
+- *works only* for nodes in the *same availability zone*
 ** Aws Ebs example
 [[file:./volume-aws-ebs.png]]
 ** Provisioning
-*** *AWS Plugin* can provision storage. It create volume before attaching them to a container/node.
-*** using *StorageClass*
-*** define storage
-[[file:./volume-storage-class.png]]
-*** volume claim
-[[file:./volume-claim.png]]
-*** use volume claim in pod
-[[file:./volume-claim-in-pod.png]]
+- *AWS Plugin* can provision storage. It create volume before attaching them to a container/node.
+- using *StorageClass*
+- define storage
+  - [[file:./volume-storage-class.png]]
+- volume claim
+  - [[file:./volume-claim.png]]
+- use volume claim in pod
+  - [[file:./volume-claim-in-pod.png]]
 * PetSets _Stateful distributed apps on K8s cluster_
 ** *stable/static Pod hostname*
-*** podname-0, podname-1
+- podname-0, podname-1
 ** stateful apps that require multiple volumes based on ordinal number
-*** deleting/scaling down PetSet will not delete volume
+- deleting/scaling down PetSet will not delete volume
 ** allow app to use DNS to find other servers
-*** One running node of a PetSet is called *Pet*
+- One running node of a PetSet is called *Pet*
 ** _order startup and teardown of pets_
 * Daemon Sets
 ** ensure that each node on the cluster runs the same pod resource
@@ -409,32 +406,32 @@ http://192.168.99.100:30000
 ** node starts, also start the pod
 ** node stops, do not reschdule the pod on another node
 ** use cases
-*** logging aggregators
-*** monitoring
-*** load balancers / proxy / api gateway
-*** any other similiar app per host
+- logging aggregators
+- monitoring
+- load balancers / proxy / api gateway
+- any other similiar app per host
 ** example
 [[file:./daemon-set.png]]
 * Resource Usage monitoring
 ** how it works
 [[file:./resoure-monitoring.png]]
 ** Heapster
-*** enables *Container Cluster Monitoring* *Performance Analysis*
-*** pre-requisite for *pod auto-scaling*
-*** export metrics via *REST*
-*** can be used with differnt backends (InfluxDB, Kafka and others)
-*** Grafana for view
+- enables *Container Cluster Monitoring* *Performance Analysis*
+- pre-requisite for *pod auto-scaling*
+- export metrics via *REST*
+- can be used with differnt backends (InfluxDB, Kafka and others)
+- Grafana for view
 #+BEGIN_SRC 
 minikube service monitoring-grafana --namespace=kube-system --url
 http://192.168.99.100:30869
 #+END_SRC
-*** Kubernetes dashboard will also show graphs
+- Kubernetes dashboard will also show graphs
 * Auto Scaling
 ** based on metrics *by heapster*
 ** deployment, replication controller, replica set
 ** scaling based on CPU is OOB
-*** also possible for custom metrics
-*** ENABLE_CUSTOM_METRICS
+- also possible for custom metrics
+- ENABLE_CUSTOM_METRICS
 * Master architecture
 [[file:./master-architecture.png]]
 ** REST / Server
@@ -474,3 +471,84 @@ http://192.168.99.100:30869
   - =kubectl config set-context $CONTEXT --namespace=myspace=
 ** Using namespaces to set quotas
 [[file:./namespace-resource-quotas.png]]  [[file:./namespace-object-quotas.png]]
+* User Management
+** Normal user
+- to connect from external to K8S. e.g. from =kubectl=
+- Not managed like K8S object
+- Authentication
+  - Client certificates
+  - Authorization Proxy
+  - OpenID
+  - HTTP Basic Authentication
+  - Bearer Token
+  - Webhooks (external service)
+- authorization
+  - Alwaysallow/AlwaysDeny
+  - ABAC (Attribute based access control)
+  - RBAC (Role based access control)
+  - Webhook
+** Service User
+- used for internal communication
+- managed like K8S objects (secrets)
+- Using Service Tokens
+- managed using secrets
+- specific to namespace
+- mounted on the pods
+- if call is not from service user, it is considered anonymous call
+** Demo
+#+BEGIN_SRC sh
+  openssl genrsa -out myuser.pem 2048
+  openssl req -new -key myuser.pem -out myuser-csr.pem -subj "/CN=myuser/O=myteam/"
+  openssl x509 -req -in myuser-csr.pem -CA ~/.minikube/ca.crt -CAkey ~/.minikube/ca.key -CAcreateserial -out myuser.crt -days 10000
+#+END_SRC
+* Networking
+** container to container
+- using localhost and the port number
+** pod to service
+- using NodePort and DNS
+** external to service
+- using LoadBalancer, NodePort
+** pod to pod
+- K8S assumes it is always possible, no matter on which node pods are running
+- each pod has its own IP address
+** set up
+|-----+-----------------------------------------------------------------|
+| AWS | kubenet                                                         |
+|     | - each pod gets ip, that is routable using AWS VPC              |
+|     | - k8s master allocates /24 subnet to each node (254 IP addresses) |
+|     | - subnet is added to VPC table                                  |
+|     | - *50 enteries* limit                                           |
+|-----+-----------------------------------------------------------------|
+|     | CNI (Container Network Interfaces)                              |
+|     | - Calico, Weave                                                 |
+|-----+-----------------------------------------------------------------|
+|     | An Overlay network                                              |
+|     | - Flannel                                                       |
+[[file:./flannel.png]]
+* Node maintenance : done by *Node controller*
+- assigns *IP space*
+- updates node list with available machines
+- monitor health of node
+  - unhealthy node gets deleted
+  - Pods which were running gets rescheduled to another node
+- on adding a new node
+  - kubelet try to register itself *self registration*
+- new Node object is created
+  - metadata
+  - labels
+- Node condition (Ready, OutOfDisk)
+- decommision a node gracefully
+  - drain a node ~kubectl dain nodename --grace-period=6000~
+* HA
+[[file:./ha.png]]
+- Clustering etcd
+- replicated API servers with LoadBalancers
+- multiple instances of scheduler and controller
+  - only one of them is leader, others are stand-by
+** commands
+#+BEGIN_SRC sh 
+  kops create cluster --name=kubernetes.newtech.academy --state=s3://kops-state-b429b --zones=eu-west-1a --node-count=2 --node-size=t2.micro --master-size=t2.micro --dns-zone=kubernetes.newtech.academy
+  kops update cluster kubernetes.newtech.academy --yes --state=s3://kops-state-b429b
+  kops delete cluster --name kubernetes.newtech.academy --state=s3://kops-state-b429b
+  kops delete cluster --name kubernetes.newtech.academy --state=s3://kops-state-b429b --yes
+#+END_SRC
