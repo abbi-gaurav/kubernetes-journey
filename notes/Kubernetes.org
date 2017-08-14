@@ -1,3 +1,269 @@
+* General
+- Kubernetes has a cloud provider interface that allows any cloud provider to implement it and integrate Kubernetes seamlessly
+- 
+* K8S Node
+- Each Kubernetes node runs several Kubernetes components, such as a kubelet and a kube proxy. Nodes are managed by a Kubernetes master.
+** Node maintenance : done by *Node controller*
+- assigns *IP space*
+- updates node list with available machines
+- monitor health of node
+  - unhealthy node gets deleted
+  - Pods which were running gets rescheduled to another node
+- on adding a new node
+  - kubelet try to register itself *self registration*
+- new Node object is created
+  - metadata
+  - labels
+- Node condition (Ready, OutOfDisk)
+- decommision a node gracefully
+  - drain a node ~kubectl dain nodename --grace-period=6000~
+** Components
+- Proxy: networking
+- kubelet: oversees communication with master
+* K8S master
+[[file:./master-architecture.png]]
+** REST / Server
+- Provides REST APIs
+- Stores the definitions on =etcd=
+** etcd
+** Scheduler
+- Takes care of intiating deployments on nodes
+** Controller Manager : Various kinds of controllers
+- Node controller
+- Replication controller
+- ......
+** DNS
+- as on 1.3, DNS service is part of cluster
+* pod basics
+- describes app running on container
+- 1 or more tightly coupled containers that makes up the app
+- Always run on the same machine.
+- All containers have same IP and port space
+- Apps can communicate with each other using local port numbers
+** sample commands run
+#+BEGIN_SRC 
+kubectl get pod
+
+kubectl describe pod nodehelloworld.example.com
+
+#host port:container port
+kubectl port-forward nodehelloworld.example.com 8081:3000
+Forwarding from 127.0.0.1:8081 -> 3000
+Forwarding from [::1]:8081 -> 3000
+Handling connection for 8081
+
+kubectl expose pod nodehelloworld.example.com --type=NodePort --name nodehelloworld-service
+service "nodehelloworld-service" exposed
+
+minikube service nodehelloworld-service --url
+http://192.168.99.102:31475
+
+kubectl get service
+
+kubectl attach nodehelloworld.example.com
+If you don't see a command prompt, try pressing enter.
+
+kubectl exec nodehelloworld.example.com -- ls /app
+
+kubectl describe service nodehelloworld-service
+#+END_SRC
+** manage a pod
+#+BEGIN_SRC 
+kubectl create -f ./pod-helloworld.yml
+
+kubectl get pods
+#+END_SRC
+** useful pod commands
+[[file:./podCommands.png]]
+* Labels
+- key-value pairs similiar to tags in AWS
+- can be used to filter using *Label Selectors*
+- The label key must adhere to a strict syntax.
+  - It has two parts: prefix (optional) and name.
+  - If it exists then it is separated from the name by a forward slash (/) and it must be a valid DNS sub-domain.
+  - The prefix must be 253 characters long at most
+- used on objects ~N X N~ relationship
+  - pods
+  - nodes
+    - tag a node
+    - add *nodeSelector* to the pod configuration to run pod only on selected nodes
+    - pods will be in *pending state* until matching nodes are available
+#+BEGIN_SRC 
+kubectl label nodes node1 hardware=high-spec
+kubectl label nodes node1 hardware=low-spec
+
+#in pod yml under spec
+nodeSelector:
+  hardware: high-spec
+kubectl get nodes --show-labels
+NAME       STATUS    AGE       LABELS
+minikube   Ready     50m       beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/hostname=minikube
+
+kubectl label nodes minikube hardware=high-spec, application != foo
+node "minikube" labeled
+#+END_SRC
+
+* Annotations
+- Annotations let you associate arbitrary metadata with Kubernetes objects
+* scaling
+- Replication controllers and replica sets both manage a group of pods identified by a label selector and ensure that a certain number is always up and running
+** scaling options
+- *stateless* apps can be scaled *horizontally*
+- *stateful* can be scaled *vertically*
+** can be done using *replication controller*
+- enusre specified number of pod replicas are running all the time
+- automatic recreation on termination
+** commands run
+- scale with file
+#+BEGIN_SRC 
+gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl scale --replicas=4 -f ./pod-replication-controller.yml
+replicationcontroller "helloworld-controller" scaled
+#+END_SRC
+- scale using controller name
+#+BEGIN_SRC 
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get rc
+NAME                    DESIRED   CURRENT   READY     AGE
+helloworld-controller   4         4         4         9m
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl scale --replicas=1 rc/helloworld-controller
+replicationcontroller "helloworld-controller" scaled
+ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pods
+NAME                               READY     STATUS        RESTARTS   AGE
+hello-minikube1-1849020499-71npc   1/1       Running       0          14m
+helloworld-controller-2nm50        1/1       Running       0          9m
+helloworld-controller-95g66        1/1       Terminating   0          5m
+helloworld-controller-b4b7z        1/1       Terminating   0          7m
+helloworld-controller-n06pr        1/1       Terminating   0          5m
+#+END_SRC
+** *Replication set* supports new selector
+- selection based on ~filtering~ according to a set of ~values~
+- used by ~Deployment Object~
+* Services
+- _Service is the logical bridge between pods and other services or end-users_
+- operates at level 3 (TCP/UDP)
+- Pods are very dynamic.They come and go on the kubernetes cluster
+  - Replication controller : pods are terminated and created during scaling
+  - Deployments : while updating an image version, podsa are terminated and new pods take their place
+- =kubectl expose= creates a new service for the pod
+- creating a service : creates endpoint for the pod
+  - *ClusterIP* : virtual ip address reachable from within the cluster
+    - it is dynamic
+    - if need static, it should be defined in yml file for service
+  - *NodePort* : same on each port that is reachable externally
+  - *LoadBalancer* : from *cloud provider* will route external traffic to every node on the NodePort
+  - DNS Names
+    - *ExternalName* can provide DNS name for the service
+    - *DNS add-ons* needs to be enabled
+
+#+BEGIN_SRC 
+kubectl create -f service-NodePort.yml
+service "helloworld-node-port" created
+
+minikube service helloworld-node-port --url
+http://192.168.99.100:31001
+
+http http://192.168.99.100:31001
+HTTP/1.1 200 OK
+
+kubectl describe service helloworld-node-port
+Name:                   helloworld-node-port
+Namespace:              default
+Labels:                 <none>
+Selector:               app=helloworld
+Type:                   NodePort
+IP:                     10.0.0.3
+Port:                   <unset> 31001/TCP
+NodePort:               <unset> 31001/TCP
+Endpoints:              172.17.0.4:3000
+Session Affinity:       None
+No events.
+#+END_SRC
+* Volumes
+** how it works
+[[file:./use-volumes.png]]
+** for stateful apps
+** Persistent Volumes in kubernetes allow to attach volumes to containers that exist even after container is destroyed
+** If node stops working, pod is scheduled to another node and same volume is used
+- *works only* for nodes in the *same availability zone*
+** Aws Ebs example
+[[file:./volume-aws-ebs.png]]
+** Provisioning
+- *AWS Plugin* can provision storage. It create volume before attaching them to a container/node.
+- using *StorageClass*
+- define storage
+  - [[file:./volume-storage-class.png]]
+- volume claim
+  - [[file:./volume-claim.png]]
+- use volume claim in pod
+  - [[file:./volume-claim-in-pod.png]]
+* StatefulSet
+- to manage a distributed data store
+- Properties
+  - A stable hostname, available in DNS
+  - An ordinal index
+  - Stable storage linked to the ordinal and hostname
+* Secrets
+- stored as plaintext in etcd
+- distribute *credentials, keys, passwords or secret data* to pods
+- used by k8s for internal APIs
+- can be used to provide secrets to application
+- one can use _other ways_ if not using *Secrets* e.g. /external vault services/
+- Usage patterns
+  - as *environment variables*
+    - [[file:./secrets_env_pod.png]]
+  - as a *file* in pod
+    - [[file:./secrets_volume_pod.png]]
+    - uses *volumes* mounted on container which has *files*
+    - *files* can contain *dotenv* or other files based on how secrets are read
+  - from *external second image*
+** Generation
+- using command line
+- using yml file
+* Namespaces
+- allow to create virtual clusters
+- logically separate the cluster
+- OOB namespaces
+  - /default/
+  - /kube-system/
+- commands
+  - =kubectl get namespaces=
+  - =kubectl create namespace myspace=
+  - set default namespace to launch resources in
+    - =export context = $(kubectl config view|awk '/current-context/{print $2}')=
+    - =kubectl config set-context $CONTEXT --namespace=myspace=
+- Using namespaces to set quotas
+  - [[file:./namespace-resource-quotas.png]]  [[file:./namespace-object-quotas.png]]
+* Distributed System Design patterns
+** Side car pattern
+- about co-locating another container in a pod in addition to the main application container.
+- e.g. a container to send logs to central logging service
+** Ambassador pattern
+- representing a remote service as if it were local and possibly enforcing some policy.
+- Redis cluster with one master for writes and many replicas for reads.
+  - A local ambassador container can serve as a proxy and expose Redis to the main application container on the localhost.
+** ADAPTER PATTERN
+- standardizing output from the main application container
+** Multi-node patterns
+- patterns such as leader election, work queues, and scatter-gather are not supported directly,
+- but composing pods with standard interfaces to accomplish them is a viable approach with Kubernetes
+* APIs
+** Kubernetes APIs
+** Autoscaling API ~/apis/autoscaling/v1~
+** Batch API ~/apis/batch/v1~
+* K8S runtimes ~runtime interface~
+- ACI (App Container Images) vs OCI (Open Container Initiative)
+- Dokcer
+                                                         ~-----> runC~
+  - ~docker commnand ---> Docker engine -----> containerd -----> runC~
+                                                         ~-----> runC~
+- Rkt
+  - features
+    - security and isolation
+    - No daemon
+    - relies on OS init system
+  - App container
+  - RKTNETES
+* K8S for CI/CD deployment
+- a set of steps that a set of changes by developers or operators that modify the code, data or configuration of a system, test them and deploys them to production.
 * minikube
 ** check status of minikube cluster
 #+BEGIN_SRC 
@@ -42,144 +308,10 @@ http://192.168.99.100:32619
 - [ ] get a free domain from somewhere
 - [ ] use *Amazon Route 53* for DNS
   - [ ] create hosted zone
-* pod basics
-- describes app running on container
-- 1 or more tightly coupled containers that makes up the app
-- Apps can communicate with each other using local port numbers
-** sample commands run
-#+BEGIN_SRC 
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pod
-NAME                         READY     STATUS              RESTARTS   AGE
-nodehelloworld.example.com   0/1       ContainerCreating   0          1m
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl describe pod nodehelloworld.example.com
-Name:           nodehelloworld.example.com
-Namespace:      default
-Node:           minikube/192.168.99.102
-Start Time:     Sun, 12 Feb 2017 19:10:56 +0100
-Labels:         app=helloworld
-Status:         Pending
-IP:
-Controllers:    <none>
-Containers:
-  k8s-demo:
-    Container ID:
-    Image:              gabbi/docker-demo
-    Image ID:
-    Port:               3000/TCP
-    State:              Waiting
-      Reason:           ContainerCreating
-    Ready:              False
-    Restart Count:      0
-    Volume Mounts:
-      /var/run/secrets/kubernetes.io/serviceaccount from default-token-40xp3 (ro)
-    Environment Variables:      <none>
-Conditions:
-  Type          Status
-  Initialized   True
-  Ready         False
-  PodScheduled  True
-Volumes:
-  default-token-40xp3:
-    Type:       Secret (a volume populated by a Secret)
-    SecretName: default-token-40xp3
-QoS Class:      BestEffort
-Tolerations:    <none>
-Events:
-  FirstSeen     LastSeen        Count   From                    SubObjectPath                   Type            Reason          Message
-  ---------     --------        -----   ----                    -------------                   --------        ------          -------
-  1m            1m              1       {default-scheduler }                                    Normal          Scheduled       Successfully assigned nodehelloworld.example.com to minikube
-  1m            1m              1       {kubelet minikube}      spec.containers{k8s-demo}       Normal          Pulling         pulling image "gabbi/docker-demo"
-
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl port-forward nodehelloworld.example.com 8081:3000
-Forwarding from 127.0.0.1:8081 -> 3000
-Forwarding from [::1]:8081 -> 3000
-Handling connection for 8081
-
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl expose pod nodehelloworld.example.com --type=NodePort --name nodehelloworld-service
-service "nodehelloworld-service" exposed
-
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  minikube service nodehelloworld-service --url
-http://192.168.99.102:31475
-
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get service
-NAME                     CLUSTER-IP   EXTERNAL-IP   PORT(S)          AGE
-kubernetes               10.0.0.1     <none>        443/TCP          21m
-nodehelloworld-service   10.0.0.50    <nodes>       3000:31475/TCP   2m
-
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl attach nodehelloworld.example.com
-If you don't see a command prompt, try pressing enter.
-
-
-^C
-
-✘ gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl exec nodehelloworld.example.com -- ls /app
-Dockerfile
-docker-compose.yml
-index-db.js
-index.js
-misc
-node_modules
-package.json
-
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl describe service nodehelloworld-service
-Name:                   nodehelloworld-service
-Namespace:              default
-Labels:                 app=helloworld
-Selector:               app=helloworld
-Type:                   NodePort
-IP:                     10.0.0.50
-Port:                   <unset> 3000/TCP
-NodePort:               <unset> 31475/TCP
-Endpoints:              172.17.0.4:3000
-Session Affinity:       None
-No events.
-#+END_SRC
-** manage a pod
-#+BEGIN_SRC 
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl create -f ./pod-helloworld.yml
-pod "nodehelloworld.example.com" created
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pods
-NAME                               READY     STATUS              RESTARTS   AGE
-hello-minikube1-1849020499-h1p1c   1/1       Running             0          7m
-nodehelloworld.example.com         0/1       ContainerCreating   0          3m
-#+END_SRC
-** useful pod commands
-[[file:./podCommands.png]]
 * architecture
 ** diagram
 [[file:./kubernetes-architecture.png]]
 ** node architecture
-* scaling
-** scaling options
-- *stateless* apps can be scaled *horizontally*
-- *stateful* can be scaled *vertically*
-** can be done using *replication controller*
-- enusre specified number of pod replicas are running all the time
-- automatic recreation on termination
-** commands run
-- scale with file
-#+BEGIN_SRC 
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl scale --replicas=4 -f ./pod-replication-controller.yml
-replicationcontroller "helloworld-controller" scaled
-#+END_SRC
-- scale using controller name
-#+BEGIN_SRC 
- gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get rc
-NAME                    DESIRED   CURRENT   READY     AGE
-helloworld-controller   4         4         4         9m
- gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl scale --replicas=1 rc/helloworld-controller
-replicationcontroller "helloworld-controller" scaled
- gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get pods
-NAME                               READY     STATUS        RESTARTS   AGE
-hello-minikube1-1849020499-71npc   1/1       Running       0          14m
-helloworld-controller-2nm50        1/1       Running       0          9m
-helloworld-controller-95g66        1/1       Terminating   0          5m
-helloworld-controller-b4b7z        1/1       Terminating   0          7m
-helloworld-controller-n06pr        1/1       Terminating   0          5m
-#+END_SRC
-** *Replication set* supports new selector
-- selection based on ~filtering~ according to a set of ~values~
-- used by ~Deployment Object~
 * *Deployment object*
 ** declaration that allows to do app deployments and updates
 ** when using ~deployment object~, one can define state of the app
@@ -233,99 +365,12 @@ kubectl edit deployment/healthcheck-deployment
 #+END_SRC
 - it opens a editor where we can change the settings and save them
 - *might not change the actual source file*
-* Services
-** Pods are very dynamic.They come and go on the kubernetes cluster
-- Replication controller : pods are terminated and created during scaling
-- Deployments : while updating an image version, podsa are terminated and new pods take their place
-** Service is the logical bridge between pods and other services or end-users
-** =kubectl expose= creates a new service for the pod
-** creating a service : creates endpoint for the pod
-- *ClusterIP* : virtual ip address reachable from within the cluster
-  - it is dynamic
-  - if need static, it should be defined in yml file for service
-- *NodePort* : same on each port that is reachable externally
-- *LoadBalancer* : from *cloud provider* will route external traffic to every node on the NodePort
-- DNS Names
-  - *ExternalName* can provide DNS name for the service
-  - *DNS add-ons* needs to be enabled
-** *Example create service*
-#+BEGIN_SRC 
-/Users/gabbi/learning/udemy/kubernetes/code [gabbi@Gauravs-Air] [11:50]
-> kubectl create -f service-NodePort.yml
-service "helloworld-node-port" created
-
-/Users/gabbi/learning/udemy/kubernetes/code [gabbi@Gauravs-Air] [11:50]
-> minikube service helloworld-node-port --url
-http://192.168.99.100:31001
-
-/Users/gabbi/learning/udemy/kubernetes/code [gabbi@Gauravs-Air] [11:50]
-> http http://192.168.99.100:31001
-HTTP/1.1 200 OK
-
-kubectl describe service helloworld-node-port
-Name:                   helloworld-node-port
-Namespace:              default
-Labels:                 <none>
-Selector:               app=helloworld
-Type:                   NodePort
-IP:                     10.0.0.3
-Port:                   <unset> 31001/TCP
-NodePort:               <unset> 31001/TCP
-Endpoints:              172.17.0.4:3000
-Session Affinity:       None
-No events.
-#+END_SRC
-* Labels
-** key-value pairs similiar to tags in AWS
-** can be used to filter using *Label Selectors*
-** used on 
-- pods
-- nodes
-  - tag a node
-  - add *nodeSelector* to the pod configuration to run pod only on selected nodes
-  - pods will be in *pending state* until matching nodes are available
-** example 1
-#+BEGIN_SRC 
-kubectl label nodes node1 hardware=high-spec
-kubectl label nodes node1 hardware=low-spec
-
-#in pod yml under spec
-nodeSelector:
-  hardware: high-spec
-#+END_SRC
-** example 2
-#+BEGIN_SRC 
- kubectl get nodes --show-labels
-NAME       STATUS    AGE       LABELS
-minikube   Ready     50m       beta.kubernetes.io/arch=amd64,beta.kubernetes.io/os=linux,kubernetes.io/hostname=minikube
-
-kubectl label nodes minikube hardware=high-spec
-node "minikube" labeled
-
-
-#+END_SRC
 * health checks
 ** to detect application malfunctions
 ** 2 types
 - a periodic command in the container
 - periodic checks on the URL (HTTP)
 ** if failed, pod is terminated and new one is launched
-* Secrets
-** distribute *credentials, keys, passwords or secret data* to pods
-** used by k8s for internal APIs
-** can be used to provide secrets to application
-** one can use _other ways_ if not using *Secrets* e.g. /external vault services/
-** Usage patterns
-- as *environment variables*
-  - [[file:./secrets_env_pod.png]]
-- as a *file* in pod
-  - [[file:./secrets_volume_pod.png]]
-  - uses *volumes* mounted on container which has *files*
-  - *files* can contain *dotenv* or other files based on how secrets are read
-- from *external second image*
-** Generation
-- using command line
-- using yml file
 * Web UI
 ** To access
 #+BEGIN_SRC 
@@ -374,24 +419,6 @@ http://192.168.99.100:30000
 - expose services to be accessed from outside cluster
 ** run your own *ingress controller*
 ** default ingress controller or one can write own
-* Volumes
-** how it works
-[[file:./use-volumes.png]]
-** for stateful apps
-** Persistent Volumes in kubernetes allow to attach volumes to containers that exist even after container is destroyed
-** If node stops working, pod is scheduled to another node and same volume is used
-- *works only* for nodes in the *same availability zone*
-** Aws Ebs example
-[[file:./volume-aws-ebs.png]]
-** Provisioning
-- *AWS Plugin* can provision storage. It create volume before attaching them to a container/node.
-- using *StorageClass*
-- define storage
-  - [[file:./volume-storage-class.png]]
-- volume claim
-  - [[file:./volume-claim.png]]
-- use volume claim in pod
-  - [[file:./volume-claim-in-pod.png]]
 * PetSets _Stateful distributed apps on K8s cluster_
 ** *stable/static Pod hostname*
 - podname-0, podname-1
@@ -432,17 +459,6 @@ http://192.168.99.100:30869
 ** scaling based on CPU is OOB
 - also possible for custom metrics
 - ENABLE_CUSTOM_METRICS
-* Master architecture
-[[file:./master-architecture.png]]
-** REST / Server
-- Provides REST APIs
-- Stores the definitions on =etcd=
-** Scheduler
-- Takes care of intiating deployments on nodes
-** Controller Manager : Various kinds of controllers
-- Node controller
-- Replication controller
-- ......
 
 * Resource Quotas
 ** control the resources allocated to teams
@@ -457,20 +473,6 @@ http://192.168.99.100:30869
 [[file:./resource-quotas-admin.png]]
 ** Object quotas that can be set by admin
 [[file:./object-quotas-admin.png]]
-* Namespaces
-- allow to create virtual clusters
-- logically separate the cluster
-- OOB namespaces
-  - /default/
-  - /kube-system/
-** commands
-- =kubectl get namespaces=
-- =kubectl create namespace myspace=
-- set default namespace to launch resources in
-  - =export context = $(kubectl config view|awk '/current-context/{print $2}')=
-  - =kubectl config set-context $CONTEXT --namespace=myspace=
-** Using namespaces to set quotas
-[[file:./namespace-resource-quotas.png]]  [[file:./namespace-object-quotas.png]]
 * User Management
 ** Normal user
 - to connect from external to K8S. e.g. from =kubectl=
@@ -525,20 +527,6 @@ http://192.168.99.100:30869
 |     | An Overlay network                                              |
 |     | - Flannel                                                       |
 [[file:./flannel.png]]
-* Node maintenance : done by *Node controller*
-- assigns *IP space*
-- updates node list with available machines
-- monitor health of node
-  - unhealthy node gets deleted
-  - Pods which were running gets rescheduled to another node
-- on adding a new node
-  - kubelet try to register itself *self registration*
-- new Node object is created
-  - metadata
-  - labels
-- Node condition (Ready, OutOfDisk)
-- decommision a node gracefully
-  - drain a node ~kubectl dain nodename --grace-period=6000~
 * HA
 [[file:./ha.png]]
 - Clustering etcd
@@ -552,3 +540,22 @@ http://192.168.99.100:30869
   kops delete cluster --name kubernetes.newtech.academy --state=s3://kops-state-b429b
   kops delete cluster --name kubernetes.newtech.academy --state=s3://kops-state-b429b --yes
 #+END_SRC
+* Istio
+[[file:./istio-architecture.png]]
+- provides an easy way to create a network of deployed services with
+  - load balancing,
+  - service-to-service authentication,
+  - monitoring, and more,
+  - without requiring any changes in service code.
+- done by deploying a side-car proxy
+  - throughout your environment that intercepts all network communication between microservices, configured and managed using Istio’s control plane functionality.
+- *Components*
+  - data plane and control plane
+  - Envoy : Proxies deployed as sidecars
+  - Mixer : Enforcing access control and usage policies and collecting telemetry data
+  - Pilot : collecting and validating configuration and propagating it to the various Istio components.
+  - Istio-auth : strong service-to-service and end-user authentication using mutual TLS, with built-in identity and credential management
+- commands
+  - ~kubectl apply -f <(istioctl kube-inject -f uaa/uaa.yml)~
+    - injects additional containers into YAML resource on the client before submitting to the Kubernetes API server.
+    - This will eventually be replaced by server-side injection via admission controller.
