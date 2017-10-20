@@ -264,6 +264,24 @@ No events.
   - RKTNETES
 * K8S for CI/CD deployment
 - a set of steps that a set of changes by developers or operators that modify the code, data or configuration of a system, test them and deploys them to production.
+* Monitoring K8S
+- cAdvisor collects information about CPU cores , memory, filesystem usage
+- cAdvisor UI runs on port 4194
+- provides all information to heapster via kubelet
+** Resource Usage monitoring
+*** how it works
+[[file:./resoure-monitoring.png]]
+*** Heapster
+- enables *Container Cluster Monitoring* *Performance Analysis*
+- pre-requisite for *pod auto-scaling*
+- export metrics via *REST*
+- can be used with differnt backends (InfluxDB, Kafka and others)
+- Grafana for view
+#+BEGIN_SRC 
+minikube service monitoring-grafana --namespace=kube-system --url
+http://192.168.99.100:30869
+#+END_SRC
+- Kubernetes dashboard will also show graphs
 * minikube
 ** check status of minikube cluster
 #+BEGIN_SRC 
@@ -439,20 +457,6 @@ http://192.168.99.100:30000
 - any other similiar app per host
 ** example
 [[file:./daemon-set.png]]
-* Resource Usage monitoring
-** how it works
-[[file:./resoure-monitoring.png]]
-** Heapster
-- enables *Container Cluster Monitoring* *Performance Analysis*
-- pre-requisite for *pod auto-scaling*
-- export metrics via *REST*
-- can be used with differnt backends (InfluxDB, Kafka and others)
-- Grafana for view
-#+BEGIN_SRC 
-minikube service monitoring-grafana --namespace=kube-system --url
-http://192.168.99.100:30869
-#+END_SRC
-- Kubernetes dashboard will also show graphs
 * Auto Scaling
 ** based on metrics *by heapster*
 ** deployment, replication controller, replica set
