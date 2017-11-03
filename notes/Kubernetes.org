@@ -563,3 +563,31 @@ http://192.168.99.100:30000
   - ~kubectl apply -f <(istioctl kube-inject -f uaa/uaa.yml)~
     - injects additional containers into YAML resource on the client before submitting to the Kubernetes API server.
     - This will eventually be replaced by server-side injection via admission controller.
+* K8S objects
+- intent for the desired state of the cluster
+- two nested object fields
+  - spec   : desired state for the object
+  - status : actual state of the object
+- At any given time, the Kubernetes Control Plane actively manages an object’s actual state to match the desired state you supplied.
+- 
+* custom resources
+- Custom resources
+  - A resource is an endpoint in the Kubernetes API that stores a collection of API objects of a certain kind.
+  - A custom resource is an extension of the Kubernetes API that is not necessarily available on every Kubernetes cluster.
+  - objects for custom resources can be built using kubectl
+- Custom controllers
+  - when custom resources are combined with custom controllers, they become true declarative api
+  - else they are just stores and retrieved as some structured data
+  - can work with any kind of resources
+  - operator pattern : It allows developers to encode domain knowledge for specific applications into an extension of the Kubernetes API.
+- Custom resources definition (CRD)
+- Aggregation
+  - The aggregation layer allows you to provide specialized implementations for your custom resources by writing and deploying your own standalone API server.
+  - The main API server delegates requests to you for the custom resources that you handle, making them available to all of its clients.
+* RBAC
+- uses rbac.authorization.k8s.io API group
+- Role represent rules that represent set of permissions
+  - within namespace with a ~Role~ or cluster wide using ~ClusterRole~
+* Helm charts
+- Helm is the package manager (analogous to yum and apt) and
+- Charts are packages (analogous to debs and rpms). 
