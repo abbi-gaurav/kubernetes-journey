@@ -531,6 +531,9 @@ http://192.168.99.100:30000
 |     | An Overlay network                                              |
 |     | - Flannel                                                       |
 [[file:./flannel.png]]
+* operators
+- an application-specific controller that extends the Kubernetes API to create, configure, and manage instances of complex stateful applications on behalf of a Kubernetes user.
+- encodes the domain knowledge and extends the Kubernetes API through the ~CRDs~ mechanism
 * HA
 [[file:./ha.png]]
 - Clustering etcd
@@ -590,4 +593,23 @@ http://192.168.99.100:30000
   - within namespace with a ~Role~ or cluster wide using ~ClusterRole~
 * Helm charts
 - Helm is the package manager (analogous to yum and apt) and
-- Charts are packages (analogous to debs and rpms). 
+- Charts are packages (analogous to debs and rpms).
+* K8S 1.9
+- ClusterRole aggregation
+  - ClusterRole can be reused across ClusterRoles
+- Network policy
+  - ingress and egress rules
+- CRDs can be validated
+  - using OpenAPI scheme
+  - type enforcement at the API server
+- mutating admission webhook
+  - custom behavior when API
+  - e.g. inject sidecar to a pod definition before storage
+- IPVS : alpha
+- IP6 : alpha
+- container storage interface : alpha
+  - volume plugins outside of k8s core
+- CoreDNS : alpha
+- Device plugins : alpha
+  - hardware acceleration : alpha
+- block devices can be used as volumes : alpha
