@@ -1,6 +1,5 @@
 * General
 - Kubernetes has a cloud provider interface that allows any cloud provider to implement it and integrate Kubernetes seamlessly
-- 
 * K8S Node
 - Each Kubernetes node runs several Kubernetes components, such as a kubelet and a kube proxy. Nodes are managed by a Kubernetes master.
 ** Node maintenance : done by *Node controller*
@@ -41,7 +40,7 @@
 - All containers have same IP and port space
 - Apps can communicate with each other using local port numbers
 ** sample commands run
-#+BEGIN_SRC 
+#+BEGIN_SRC shell
 kubectl get pod
 
 kubectl describe pod nodehelloworld.example.com
@@ -195,6 +194,35 @@ No events.
   - [[file:./volume-claim.png]]
 - use volume claim in pod
   - [[file:./volume-claim-in-pod.png]]
+** types
+- /emptyDir/
+  - starts empty
+  - ephemeral
+  - stores data on node (memory or disk)
+#+BEGIN_SRC yaml
+  # declare
+  volumes:
+  - name: cache-volume
+    emptyDir: {}
+
+  # use
+  name: demo
+  image: cloudnatived/demo:hello
+  volumeMounts:
+  - mountPath: /cache
+    name: cache-volume
+#+END_SRC
+
+- /PersistentVolume/
+  - pool
+  - *dynamic provisioning*
+#+BEGIN_SRC yaml
+# declare
+volumes:
+- name: data-volume
+  persistentVolumeClaim:
+    claimName: data-pvc
+#+END_SRC
 * StatefulSet
 - to manage a distributed data store
 - Properties
@@ -283,23 +311,13 @@ http://192.168.99.100:30869
 #+END_SRC
 - Kubernetes dashboard will also show graphs
 * minikube
-** check status of minikube cluster
-#+BEGIN_SRC 
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube status
-minikubeVM: Stopped
-localkube: N/A
-#+END_SRC
-** start minikube
-#+BEGIN_SRC 
-gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube start
-Starting local Kubernetes cluster...
-Kubectl is now configured to use the cluster.
- gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube status
-minikubeVM: Running
-localkube: Running
- gabbi@Gauravs-Air  ~/learning/udemy/kubernetes  minikube stop
-Stopping local Kubernetes cluster...
-Machine stopped.
+#+BEGIN_SRC shell
+  minikube start --memory=8192 --cpus=4 \
+    --kubernetes-version=v1.13.0 \
+    --vm-driver=hyperkit \
+    --bootstrapper=kubeadm \
+    --feature-gates=ExpandPersistentVolumes=true \
+    --extra-config=apiserver.enable-admission-plugins="LimitRanger,NamespaceExists,NamespaceLifecycle,ResourceQuota,ServiceAccount,DefaultStorageClass,MutatingAdmissionWebhook,PersistentVolumeClaimResize"
 #+END_SRC
 * kubectl
 ** create deployment
@@ -330,7 +348,7 @@ http://192.168.99.100:32619
 ** diagram
 [[file:./kubernetes-architecture.png]]
 ** node architecture
-* *Deployment object*
+* Deployment object
 ** declaration that allows to do app deployments and updates
 ** when using ~deployment object~, one can define state of the app
 - kubernetes than make sure that the clusters matches your desired state
@@ -437,7 +455,7 @@ http://192.168.99.100:30000
 - expose services to be accessed from outside cluster
 ** run your own *ingress controller*
 ** default ingress controller or one can write own
-* PetSets _Stateful distributed apps on K8s cluster_
+* PetSets Stateful distributed apps on K8s cluster
 ** *stable/static Pod hostname*
 - podname-0, podname-1
 ** stateful apps that require multiple volumes based on ordinal number
@@ -478,6 +496,7 @@ http://192.168.99.100:30000
 ** Object quotas that can be set by admin
 [[file:./object-quotas-admin.png]]
 * User Management
+- ~system:authenticated~ group for authenticated user
 ** Normal user
 - to connect from external to K8S. e.g. from =kubectl=
 - Not managed like K8S object
@@ -493,20 +512,43 @@ http://192.168.99.100:30000
   - ABAC (Attribute based access control)
   - RBAC (Role based access control)
   - Webhook
-** Service User
-- used for internal communication
-- managed like K8S objects (secrets)
-- Using Service Tokens
-- managed using secrets
-- specific to namespace
-- mounted on the pods
-- if call is not from service user, it is considered anonymous call
 ** Demo
 #+BEGIN_SRC sh
   openssl genrsa -out myuser.pem 2048
   openssl req -new -key myuser.pem -out myuser-csr.pem -subj "/CN=myuser/O=myteam/"
   openssl x509 -req -in myuser-csr.pem -CA ~/.minikube/ca.crt -CAkey ~/.minikube/ca.key -CAcreateserial -out myuser.crt -days 10000
 #+END_SRC
+** client certificates : ~CN of the subject is used as the user name~
+** bearer token :
+- ~static token file~
+- format : token,user,uid,"group1,group2,group3"
+- in HTTP requests ~Authorization: Bearer <token>~
+- ~Bootstrap Tokens~
+  - ~alpha~
+  - dynamically-managed Bearer token 
+** authenticating proxy
+- Header ~X-Remote-User~
+** HTTP Basic Auth
+- static file for basic auth
+- format : password,user,uid,"group1,group2,group3"
+** service token tokens
+- automatically enabled authenticator
+- ~sa~ created automatically by the API server and associated with pods running in the cluster through the ServiceAccount
+- Accounts may be explicitly associated with pods using the ~serviceAccountName~ field of a ~PodSpec~
+- for in-cluster access to the API server
+- can also be used from outside
+** OpenID Connect Tokens
+- ~ID Token~ is a JWT
+- authenticator uses ~id_token~
+** Webhook Token Authentication
+** anonymous requsts
+- user ~system:anonymous~
+- group ~system:unauthenticated~
+** user impersonation
+- API server ensures the authenticated users has impersonation privileges.
+- ~Impersonate-User~
+- ~Impersonate-Group~
+- ~Impersonate-Extra-( extra name )~
 * Networking
 ** container to container
 - using localhost and the port number
@@ -572,7 +614,6 @@ http://192.168.99.100:30000
   - spec   : desired state for the object
   - status : actual state of the object
 - At any given time, the Kubernetes Control Plane actively manages an object’s actual state to match the desired state you supplied.
-- 
 * custom resources
 - Custom resources
   - A resource is an endpoint in the Kubernetes API that stores a collection of API objects of a certain kind.
@@ -587,10 +628,6 @@ http://192.168.99.100:30000
 - Aggregation
   - The aggregation layer allows you to provide specialized implementations for your custom resources by writing and deploying your own standalone API server.
   - The main API server delegates requests to you for the custom resources that you handle, making them available to all of its clients.
-* RBAC
-- uses rbac.authorization.k8s.io API group
-- Role represent rules that represent set of permissions
-  - within namespace with a ~Role~ or cluster wide using ~ClusterRole~
 * Helm charts
 - Helm is the package manager (analogous to yum and apt) and
 - Charts are packages (analogous to debs and rpms).
@@ -613,3 +650,90 @@ http://192.168.99.100:30000
 - Device plugins : alpha
   - hardware acceleration : alpha
 - block devices can be used as volumes : alpha
+* RBAC
+- uses ~rbac.authorization.k8s.io~ API group
+- Role represent rules that represent set of permissions
+  - within namespace with a ~Role~ or cluster wide using ~ClusterRole~
+  - ~permissions~ are purely additive
+- To enable, start the API server with ~-authorization-mode=RBAC~
+- Aggregated ClusterRoles
+** binding to ~subject~
+- groups
+- users
+- servcie accounts
+  - username have ~system:serviceaccount:~ prefix
+  - belong to groups ~system:serviceaccounts:~ prefix
+- for all sa in qa namespace
+#+BEGIN_SRC yaml
+    subjects:
+  - kind: Group
+    name: system:serviceaccounts:qa
+    apiGroup: rbac.authorization.k8s.io
+#+END_SRC
+- for all authenticated users
+#+BEGIN_SRC yaml
+  subjects:
+  - kind: Group
+    name: system:authenticated
+    apiGroup: rbac.authorization.k8s.io
+#+END_SRC
+* useful k8s commands
+- /kubectl explain/
+  - ~kubectl explain pods~
+  - ~kubectl explain deploy.spec.template.spec.containers.livenessProbe.exec~
+  - ~kubectl explain --recursive <resources>~
+- /kubectl export/
+  - ~kubectl get deployments newdemo -o yaml --export >deployment.yaml~
+- /kubectl alpha diff/
+  - ~kubectl alpha diff -f deployment.yaml~
+- /kubectl logs --tail=x/
+  - ~kubectl logs --namespace kube-system --tail=10 --follow etcd-docker-for-desktop~
+- /kubect attach/
+  - ~kubectl attach demo-54f4458547-fcx2n~
+- /kubectl exec/
+  - ~kubectl exec -it alpine-7fd44fc4bf-7gl4n /bin/sh~
+- /running comtainers for troubleshooting/
+  - ~kubectl run nslookup --image=busybox:1.28 --rm -it --restart=Never --command -- nslookup demo~
+* k8s tools
+- kubesquash
+- kubespy
+- kubectx
+- kubens
+- kube-ps1
+- kube-shell
+- kubed-sh
+- Stern
+* K8S security
+- Pod security context
+#+BEGIN_SRC yaml
+  securityContext: # container and pod level
+    runAsUser: 1000
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true  # container cannot write to its filesystem
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["all"]
+      add: ["NET_BIND_SERVICE"]
+#+END_SRC
+- /Pod Security policies/
+  - cluster level
+#+BEGIN_SRC yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: example
+spec:
+  privileged: false
+  # The rest fills in some required fields.
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  runAsUser:
+    rule: RunAsAny
+  fsGroup:
+    rule: RunAsAny
+  volumes:
+  - *
+#+END_SRC
+

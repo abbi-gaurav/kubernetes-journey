@@ -1,0 +1,7 @@
+* refer 
+- quick start: https://istio.io/docs/setup/kubernetes/quick-start/
+* to override per request behaviour
+- use envoy headers
+* configuration video
+- https://www.youtube.com/watch?v=x1Tyw8dFKjI
+* 
