@@ -20,7 +20,7 @@
 - Proxy: networking
 - kubelet: oversees communication with master
 * K8S master
-[[file:./master-architecture.png]]
+[[file:./assets/master-architecture.png]]
 ** REST / Server
 - Provides REST APIs
 - Stores the definitions on =etcd=
@@ -73,7 +73,7 @@ kubectl create -f ./pod-helloworld.yml
 kubectl get pods
 #+END_SRC
 ** useful pod commands
-[[file:./podCommands.png]]
+[[file:./assets/podCommands.png]]
 * Labels
 - key-value pairs similiar to tags in AWS
 - can be used to filter using *Label Selectors*
@@ -178,22 +178,22 @@ No events.
 #+END_SRC
 * Volumes
 ** how it works
-[[file:./use-volumes.png]]
+[[file:./assets/use-volumes.png]]
 ** for stateful apps
 ** Persistent Volumes in kubernetes allow to attach volumes to containers that exist even after container is destroyed
 ** If node stops working, pod is scheduled to another node and same volume is used
 - *works only* for nodes in the *same availability zone*
 ** Aws Ebs example
-[[file:./volume-aws-ebs.png]]
+[[file:./assets/volume-aws-ebs.png]]
 ** Provisioning
 - *AWS Plugin* can provision storage. It create volume before attaching them to a container/node.
 - using *StorageClass*
 - define storage
-  - [[file:./volume-storage-class.png]]
+  - [[file:./assets/volume-storage-class.png]]
 - volume claim
-  - [[file:./volume-claim.png]]
+  - [[file:./assets/volume-claim.png]]
 - use volume claim in pod
-  - [[file:./volume-claim-in-pod.png]]
+  - [[file:./assets/volume-claim-in-pod.png]]
 ** types
 - /emptyDir/
   - starts empty
@@ -237,9 +237,9 @@ volumes:
 - one can use _other ways_ if not using *Secrets* e.g. /external vault services/
 - Usage patterns
   - as *environment variables*
-    - [[file:./secrets_env_pod.png]]
+    - [[file:./assets/secrets_env_pod.png]]
   - as a *file* in pod
-    - [[file:./secrets_volume_pod.png]]
+    - [[file:./assets/secrets_volume_pod.png]]
     - uses *volumes* mounted on container which has *files*
     - *files* can contain *dotenv* or other files based on how secrets are read
   - from *external second image*
@@ -259,7 +259,7 @@ volumes:
     - =export context = $(kubectl config view|awk '/current-context/{print $2}')=
     - =kubectl config set-context $CONTEXT --namespace=myspace=
 - Using namespaces to set quotas
-  - [[file:./namespace-resource-quotas.png]]  [[file:./namespace-object-quotas.png]]
+  - [[file:./assets/namespace-resource-quotas.png]]  [[file:./assets/namespace-object-quotas.png]]
 * Distributed System Design patterns
 ** Side car pattern
 - about co-locating another container in a pod in addition to the main application container.
@@ -298,7 +298,7 @@ volumes:
 - provides all information to heapster via kubelet
 ** Resource Usage monitoring
 *** how it works
-[[file:./resoure-monitoring.png]]
+[[file:./assets/resoure-monitoring.png]]
 *** Heapster
 - enables *Container Cluster Monitoring* *Performance Analysis*
 - pre-requisite for *pod auto-scaling*
@@ -346,7 +346,7 @@ http://192.168.99.100:32619
   - [ ] create hosted zone
 * architecture
 ** diagram
-[[file:./kubernetes-architecture.png]]
+[[file:./assets/kubernetes-architecture.png]]
 ** node architecture
 * Deployment object
 ** declaration that allows to do app deployments and updates
@@ -359,7 +359,7 @@ http://192.168.99.100:32619
 - roll back
 - Pause/resume
 ** commands reference
-[[file:./deploymentCommands.png]]
+[[file:./assets/deploymentCommands.png]]
 ** commands run
 #+BEGIN_SRC 
 gabbi@Gauravs-Air  ~/learning/udemy/kubernetes/code  kubectl get deployments
@@ -423,7 +423,7 @@ http://192.168.99.100:30000
 #+END_SRC
 * Service Discovery
 ** DNS is a built-in service since K8s 1.3
-[[file:./dns.png]]                      [[file:./dns-internal.png]]   
+[[file:./assets/dns.png]]                      [[file:./assets/dns-internal.png]]   
 - can be used to find other services running on same cluster
 - to make it work, pod will need a service defintion
 - containers in same pod can contact each other using localhost:port. Don't need DNS
@@ -433,12 +433,12 @@ http://192.168.99.100:30000
 ** *key-value pairs*
 ** can be read by the app using
 - Environment variables
-  - [[file:./configMap-using-env.png]]
+  - [[file:./assets/configMap-using-env.png]]
 - container command line arguments in pod configurations
 - volumes
-  - [[file:./configMap-specify-in-pod.png]]
+  - [[file:./assets/configMap-specify-in-pod.png]]
 - can also contain a full configuration *file* 
-  - [[file:./configMap-using-file.png]]
+  - [[file:./assets/configMap-using-file.png]]
   - file then can be mounted using volumes
 ** commands
 #+BEGIN_SRC sh
@@ -449,7 +449,7 @@ http://192.168.99.100:30000
   kubectl get configmap nginx-config -o yaml
 #+END_SRC
 * ingress
-[[file:./ingress.png]]
+[[file:./assets/ingress.png]]
 ** allows *inbound connections* to the cluster
 ** alternative to load balancer and Node ports
 - expose services to be accessed from outside cluster
@@ -474,7 +474,7 @@ http://192.168.99.100:30000
 - load balancers / proxy / api gateway
 - any other similiar app per host
 ** example
-[[file:./daemon-set.png]]
+[[file:./assets/daemon-set.png]]
 * Auto Scaling
 ** based on metrics *by heapster*
 ** deployment, replication controller, replica set
@@ -492,9 +492,9 @@ http://192.168.99.100:30000
 - request capacity : minimum capacity pod needs
 - capacity limits : limits beyond which container cannot utilize resources
 ** Resource limits that can be set by admin
-[[file:./resource-quotas-admin.png]]
+[[file:./assets/resource-quotas-admin.png]]
 ** Object quotas that can be set by admin
-[[file:./object-quotas-admin.png]]
+[[file:./assets/object-quotas-admin.png]]
 * User Management
 - ~system:authenticated~ group for authenticated user
 ** Normal user
@@ -572,12 +572,12 @@ http://192.168.99.100:30000
 |-----+-----------------------------------------------------------------|
 |     | An Overlay network                                              |
 |     | - Flannel                                                       |
-[[file:./flannel.png]]
+[[file:./assets/flannel.png]]
 * operators
 - an application-specific controller that extends the Kubernetes API to create, configure, and manage instances of complex stateful applications on behalf of a Kubernetes user.
 - encodes the domain knowledge and extends the Kubernetes API through the ~CRDs~ mechanism
 * HA
-[[file:./ha.png]]
+[[file:./assets/ha.png]]
 - Clustering etcd
 - replicated API servers with LoadBalancers
 - multiple instances of scheduler and controller
@@ -590,7 +590,7 @@ http://192.168.99.100:30000
   kops delete cluster --name kubernetes.newtech.academy --state=s3://kops-state-b429b --yes
 #+END_SRC
 * Istio
-[[file:./istio-architecture.png]]
+[[file:./assets/istio-architecture.png]]
 - provides an easy way to create a network of deployed services with
   - load balancing,
   - service-to-service authentication,

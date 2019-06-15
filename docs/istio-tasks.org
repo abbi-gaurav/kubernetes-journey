@@ -4,4 +4,3 @@
 - use envoy headers
 * configuration video
 - https://www.youtube.com/watch?v=x1Tyw8dFKjI
-* 
