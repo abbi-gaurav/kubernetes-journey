@@ -10,7 +10,7 @@ Choose to either start minikube or kind locally.
 
 ```bash
 minikube start --memory=8192 --cpus=4 \
-  --kubernetes-version=v1.12.0 \
+  --kubernetes-version=v1.16.0 \
   --vm-driver=hyperkit \
   --disk-size=30g \
   --extra-config=apiserver.enable-admission-plugins="LimitRanger,NamespaceExists,NamespaceLifecycle,ResourceQuota,ServiceAccount,DefaultStorageClass,MutatingAdmissionWebhook"
@@ -34,7 +34,7 @@ helm init --service-account tiller
 helm install ${ISTIO_RELEASE_HOME}/install/kubernetes/helm/istio-init --name istio-init --namespace istio-system
 
 helm install ${ISTIO_RELEASE_HOME}/install/kubernetes/helm/istio --name istio --namespace istio-system \
-	--values ./assets/istio/my-values.yaml
+   --values ./assets/istio/my-values.yaml
 ```
 
 ## Install Knative (Serving + Build + Eventing)
@@ -42,14 +42,14 @@ helm install ${ISTIO_RELEASE_HOME}/install/kubernetes/helm/istio --name istio --
 ```bash
 # install CRDs
 kubectl apply --selector knative.dev/crd-install=true \
-	--filename https://github.com/knative/serving/releases/download/v0.6.1/serving.yaml \
-	--filename https://github.com/knative/build/releases/download/v0.6.0/build.yaml \
-	--filename https://github.com/knative/eventing/releases/download/v0.6.0/eventing.yaml \
-	--filename https://raw.githubusercontent.com/knative/serving/v0.6.1/third_party/config/build/clusterrole.yaml
-	
+    --filename https://github.com/knative/serving/releases/download/v0.6.1/serving.yaml \
+    --filename https://github.com/knative/build/releases/download/v0.6.0/build.yaml \
+    --filename https://github.com/knative/eventing/releases/download/v0.6.0/eventing.yaml \
+    --filename https://raw.githubusercontent.com/knative/serving/v0.6.1/third_party/config/build/clusterrole.yaml
+
 # install components
 kubectl apply --filename assets/knative/v0.6/serving.yaml --selector networking.knative.dev/certificate-provider!=cert-manager \
-	--filename https://raw.githubusercontent.com/knative/serving/v0.6.0/third_party/config/build/clusterrole.yaml \
-	--filename assets/knative/v0.6/build.yaml \
-	--filename assets/knative/v0.6/eventing-release.yaml
+    --filename https://raw.githubusercontent.com/knative/serving/v0.6.0/third_party/config/build/clusterrole.yaml \
+    --filename assets/knative/v0.6/build.yaml \
+    --filename assets/knative/v0.6/eventing-release.yaml
 ```

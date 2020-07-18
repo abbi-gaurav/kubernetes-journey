@@ -1,0 +1,20 @@
+* flux + argo cd collaborated
+* TODO how to view the errors?
+* flux
+** undo any manual changes
+** TODO commiter identity?
+* flux cd
+- uses =kubectl=
+- makes it possible to set the same =kubectl= as used by teams
+[[file:./assets/flux-cd.png]]
+
+[[file:./assets/flux-arch.png]]
+
+* multi-tenancy (per team or environment type in a singel cluster)
+- try the example in the flux organisation
+[[file:./assets/flux-multi-tenancy.png]]
+
+* for secrets
+- bitnami sealed secrets
+- git secret
+- mozilla project called ~sops~

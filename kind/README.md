@@ -17,10 +17,3 @@ Refer [Quick Start](https://kind.sigs.k8s.io/docs/user/quick-start/).
   ```shell
   kind create cluster --config ./config/2-worker-1-master.yaml
   ```
-
-* Point kubectl
-
-  ```shell
-  export KUBECONFIG="$(kind get kubeconfig-path)"
-  kubectl cluster-info
-  ```
