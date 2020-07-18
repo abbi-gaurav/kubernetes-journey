@@ -1,0 +1,42 @@
+* Sping up the vagrant machines
+#+BEGIN_SRC shell
+  cd vagrant
+  vahrant up
+#+END_SRC
+* ssh to vagrant machines
+#+BEGIN_SRC shell
+  vagrant ssh master-1
+  vagrant ssh worker-1
+#+END_SRC
+* tmux ~set synchronize-panes on~
+* machines check
+#+BEGIN_SRC shell
+  hostname -i #should return proper ip ddress
+  ping master-1 #should return ip address
+  ping worker-1 # should return ip address
+#+END_SRC
+* install cri (docker)
+#+BEGIN_SRC shell
+  sudo -i
+#+END_SRC
+- Refer https://kubernetes.io/docs/setup/production-environment/container-runtimes/
+* install kubeadm
+- https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+* tmux ~set synchronize-panes off~
+* install control plane
+#+BEGIN_SRC shell
+  kubeadm init \
+          --apiserver-advertise-address 192.168.5.11 \
+          --service-cidr 10.96.0.0/24 \
+          --pod-network-cidr 10.32.0.0/12
+#+END_SRC
+- note the join command
+* join the worker node
+- use the join command outputted from ~kubeadm init~
+* install the pod network plugin
+- https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/#pod-network
+- weave plugin
+* verify
+- all nodes are ready
+- all smoke tests pass
+  - https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/15-smoke-test.md

@@ -1,0 +1,609 @@
+* k8s
+- Kubernetes is a portable, extensible, open-source platform for managing containerized workloads and services, that facilitates both declarative configuration and automation.
+** services
+- NodePort
+  - only port is mandatory
+  - targetPort by default is same as port
+  - nodePort is a free port from range *30000 - 32767*
+  - same nodePort on all nodes
+  - service acts as loadbalancer
+* k8s master
+- collection of 3 processes managing cluster state
+** kube-scheduler
+- Scheduler looks for all pods that do not have nodeName set
+- finds a Node to schedule the pod based on the scheduling algorithm
+- Sets the *nodeName* property
+  - Either assign a nodeName at the pod creation time or,
+  - Create an object of type v1/Binding and then send a POST request of the form
+  - ~curl --header "Content-Type: application/json" --request POST --data '{"apiVersion": "v1", "kind" : "Binding", ...}' http://$SERVER/api/v1/namespaces/default/pods/$PODNAME/binding/~
+- Use a custom scheduler. Specify the name. If not specified, it takes the name *default-scheduler*
+- multiple schedulers
+  - *--schduler-name*
+  - *leader-elect=true* --> only one of the multiple scheduler copies will be active
+  - *lock-object-name* --> use a different scheduler and make it active
+- ~pod.spec.schedulerName~
+** kube-apiserver
+** kube-controller-manager
+* core
+** taints and tolerations
+- *Taints* are set on nodes
+  - =kubectl taint nodes node-name key=value:taint-effect=
+  - ~taint-effect~ describe what happens to POD that do not tolerate the taint
+    - *NoSchedule*  no new pods will be scheduled that do not tolerate
+    - *PreferNoSchedule* ->
+    - *NoExecute*  No new pods and evict those that are already there and do not tolerate
+  - Taints only restrict having certain kind of pods. It does not gurantee that pods will always be placed on those nodes.to acheive that, we need to use *nodeAffinitty*
+  - Master has a taint that prevents any nodes to be sechduled
+- *Tolerations* are set on pods
+  - ~pod.spec.tolerations~
+** node selectors
+- label the node
+- matches the labels on the nodes
+** node affinity
+** static pods
+- ~/etc/kubernetes/manifests~
+- provided in kubelet configuration
+** application lifecycle management
+#+BEGIN_SRC shell
+  kubectl rollout history deployment/myapp
+#+END_SRC
+- deployment strategy
+  - recreate
+  - rolling update
+** command and args
+- docker
+  - ~entrypoint~ = executable
+  - ~command~ = args
+  - docker run only takes arguments by default
+  - to override entrypoint ~docker run --entrypoint <>~
+- k8s
+  - *docker entrypoint = container command*
+  - *docker command = container args*
+** secrets
+- secret as volume
+  - Also the way kubernetes handles secrets. Such as:
+  - A secret is only sent to a node if a pod on that node requires it.
+  - Kubelet stores the secret into a tmpfs so that the secret is not written to disk storage.
+  - Once the Pod that depends on the secret is deleted, kubelet will delete its local copy of the secret data as well.
+* monitoring
+- *cAdvisor* is responsible for getting metrics from the pods and make them available to metrics server
+* k8s node
+- kubelet /communicates with k8s master/
+- kube-proxy /a network proxy which reflects k8s networking services on each node/
+* cluster maintenance
+** os upgrade
+- *pod eviction timeout* = time controller manager waits for the worker node to respond before it is considered dead. Then the pods are evicted from that node.
+- *drain a node* ==> pods from that node are terminated gracefully and recreated on another node. And the node is marked as un-schedulable.
+- *cordon* mark node as unschedulable so new pods are not scheduled, old ones still remain
+- *uncordon* a node to make it schedulable again.
+** k8s hybrid versions
+|--------------------+-----------+--------------------|
+| components         | version   |                    |
+|--------------------+-----------+--------------------|
+| kube-apiserver     | x         | 1.10               |
+| controller-manager | x-1       | 1.9 or 1.10        |
+| kube-scheduler     | x-1       | 1.9 or 1.10        |
+| kubelet            | x-2       | 1.8, 1.9 or 1.10   |
+| kube-proxy         | x-2       | 1.8, 1.9 or 1.10   |
+| kubectl            | x+1 > x-1 | 1.11, 1.10, or 1.9 |
+|--------------------+-----------+--------------------|
+
+- at any time, k8s supports only recent latest 3 minor releases
+- upgrade one minor version at a time
+- ~kubeadm upgrade plan~
+  - does not upgrade kubelet. It has to be done manually
+  - First upgrade kubeadm
+  - ~apt-get upgrade -y kubeadm=1.12.0-00~
+  - ~kubeadm upgrade apply~ 
+- upgrade process
+  - first upgrade master (all management plan components)
+  - they will be down
+  - all user applications will be running
+- various strategies to upgrade worker nodes
+  - upgrade all at once (downtime)
+  - upgrade one node at a time
+  - add new nodes with the newer version. Move workload to a newer node. remove the old version node
+- to uppdate kubelet
+  - ~apt-get upgrade -y kubelet=1.12.0-00~
+  - ~systemctl restart kubelet~
+#+BEGIN_SRC shell
+  apt-get upgrade -y kubeadm=1.12.0-00
+  apt-get upgrade -y kubelet=1.12.0-00
+  kubeadm upgrade node config --kubelet version v1.12.0
+  systemctl restart kubelet
+#+END_SRC
+* backup and restore
+** etcd backup/restore (etcd running as a static pod)
+- take etcd backup
+#+BEGIN_SRC shell
+  ETCDCTL_API=3 etcdctl snapshot save -h #check the options
+  ETCDCTL_API=3 etcdctl \
+             --endpoints=https://127.0.0.1:2379 \
+             --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+             --cert=/etc/kubernetes/pki/etcd/server.crt \
+             --key=/etc/kubernetes/pki/etcd/server.key \
+             snapshot save /tmp/snapshot-pre-boot.db
+#+END_SRC
+- vm maintenance
+- issues with data, so now we *restore*
+- apply the restore command,
+  - take the values from the pod definition
+#+BEGIN_SRC shell
+  ETCDCTL_API=3 etcdctl snapshot restore -h #check the options
+  ETCDCTL_API=3 etcdctl \
+             --endpoints=https://127.0.0.1:2379 \
+             --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+             --cert=/etc/kubernetes/pki/etcd/server.crt \
+             --key=/etc/kubernetes/pki/etcd/server.key \
+             # a different data directory
+             --data-dir="/var/lib/etcd-from-backup-2" \
+             --initial-cluster="master=https://127.0.0.1:2380" \
+             --name="master" \
+             --initial-advertise-peer-urls="https://127.0.0.1:2380" \
+             # a different token
+             --initial-cluster-token="etcd-cluster-2" \
+  snapshot restore /tmp/snapshot-pre-boot.db
+#+END_SRC
+- update the static pod definiton file
+  - data directory
+  - token
+  - replace the mount path
+- check the new docker container has been started (etcd)
+#+BEGIN_SRC shell
+watch "docker ps -a | grep etcd"
+#+END_SRC
+- verify the member list
+#+BEGIN_SRC shell
+  ETCDCTL_API=3 etcdctl \
+               --endpoints=https://127.0.0.1:2379 \
+               --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+               --cert=/etc/kubernetes/pki/etcd/server.crt \
+               --key=/etc/kubernetes/pki/etcd/server.key \
+               member list
+#+END_SRC
+
+#+BEGIN_SRC shell
+  ETCDCTL_API=3 etcdctl \
+           --options \
+           snapshot status <file-path> -w table
+
+#+END_SRC
+
+- restore command
+- use a new token
+- new data dir location
+- update etcd.service configuration file to use new token and data directory
+- reload service daemon
+- restart etcd
+- start the kube-apiserver
+* security
+** TLS basics
+- symmetric and asymmetric encryption
+- openssl key creation
+#+BEGIN_SRC shell
+  openssl genrsa -out my-bank.key 1024
+  openssl rsa -in my-bank.key -pubout > mybank.pem
+  openssl req -new -key my-bank.key -out my-bank.csr \
+          -subj "/C=US/ST=CA/O=MyOrg, Inc./CN=my-bank.com"
+#+END_SRC
+** TLS in kubernetes
+- *ca*
+  - ca.crt
+  - ca.key
+- client certificates
+|-------------------------------------------------------------+-----------------------|
+| certificate                                                 | purpose               |
+|-------------------------------------------------------------+-----------------------|
+| admin.crt / admin.key                                       | call apiserver        |
+| scheduler.crt / scheduler.key                               | -                     |
+| controller-manager.crt / controller-manager.key             | -                     |
+| kubec-proxy.crt / kubec-proxy.key                           | -                     |
+|-------------------------------------------------------------+-----------------------|
+| apiserver-kubelet-client.crt / apiserver-kubelet-client.key | apiserver --> kubelet |
+| apiserver-etcd.crt / apiserver-etcd.key                     | apiserver --> etcd    |
+| kubelet-client.crt / kubelet-client.key                     | kubelet --> apiserver |
+|-------------------------------------------------------------+-----------------------|
+
+- server certificates
+|-----------------------------------|
+| etcd-server.crt / etcd-server.key |
+| apiserver.crt / apiserver.key     |
+| kubelet.crt / kubelet.key         |
+|-----------------------------------|
+|                                   |
+
+** cert generation
+*** ca
+#+BEGIN_SRC shell
+  openssl genrsa -out ca.key 2048
+  openssl req -new -key ca.key -subj "/CN=KUBERNETES-CA" -out ca.csr
+  openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt
+#+END_SRC
+*** admin
+#+BEGIN_SRC shell
+  openssl genrsa -out admin.key 2048
+  openssl req -new -key admin.key -subj \
+          "/CN=kube-admin/O=system:masters" -out admin.csr
+  openssl x509 -req -in admin.csr -CA ca.crt -CAkey ca.key -out admin.crt
+#+END_SRC
+*** same process for 
+- /CN=SYSTEMKUBE-SCHEDULER
+- /CN=SYSTEMKUBE-COTROLLER-MANGER
+- /CN=KUBE-PROXY 
+*** kube api server
+#+BEGIN_SRC shell
+  openssl genrsa -out apiserver.key 2048
+  openssl req -new -key apiserver.key -subj \
+        "/CN=kube-apiserver" -out apiserver.csr -config openssl.cnf
+  openssl x509 -req -in apiserver.csr \
+        - CA ca.crt -CAkey ca.key -CAcreateserial -out apiserver.crt
+
+#+END_SRC
+
+#+BEGIN_SRC
+[req]
+req_extensions = v3_req
+[ v3_req ]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation,
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = kubernetes
+DNS.2 = kubernetes.default
+DNS.3 = kubernetes.default.svc
+DNS.4 = kubernetes.default.svc.cluster.local
+IP.1 = x.x.x.x
+IP.2 = y.y.y.y
+#+END_SRC
+*** kubelet
+- certs named node01, node02, ...
+- configure in kubelet-conig.yaml
+- nodes are system components, so CN starts with /SYSTEM/
+  - e.g. */CN=system:node:node01*
+  - and group name is *system:nodes*
+** certificate details
+#+BEGIN_SRC shel
+openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout
+
+journalctl -u etcd.service -l
+kubectl logs
+
+docker ps -a
+docker logs <container id>
+#+END_SRC
+** kubeconfig
+- clusters
+- users
+- contexts
+** api groups
+- */api*  --> core group
+- */apis* --> named group
+  - /apps
+    - /v1
+      - /deployments
+        - list, get, create, update, delete, watch
+      - /replicasets
+      - /statefulsets
+  - /extensions
+  - /networking.k8s.io
+  - /storage.k8s.io
+  - /authentication.k8s.io
+  - /certificates.k8s.io
+** rbac
+#+BEGIN_SRC shell
+kubectl auth can-i list pods --as dev-user
+
+kubectl api-resources --namespaced=true
+kubectl api-resources --namespaced=false
+#+END_SRC
+** security context
+- *capabilities only at the container level and not at the pod level*
+** nw policies
+- by default k8s has =allow all= policy
+* storage
+** docker storage
+#+BEGIN_SRC 
+/var/lib/docker
+  aufs
+  containers
+  image
+  containers
+  volumes
+    data_volume
+#+END_SRC
+- layered architecture
+  - each line in =Dockerfile= creates a layer
+  - =docker run= --> =container layer=
+  - =copy on write= mechanism
+- volumes
+  - volume mount and bind mount
+#+BEGIN_SRC shell
+  # volume mount
+  docker volume create data_volume=
+  doker run -v data_volume:/var/lib/mysql mysql
+  doker run -v data_volume2:/var/lib/mysql mysql #docker creates a volume
+
+  doker run -v /data/mysql:/var/lib/mysql mysql #docker binds to host directory, bind mount
+
+  docker run \ #new way
+       --mount type=bind,source=/data/mysql,target=/var/lib/mysql mysql
+#+END_SRC
+- storage drivers
+- volume drivers
+#+BEGIN_SRC shell
+  docker run -it \
+         --name mysql \
+         --volume-driver rexray/ebs \
+         --mount src=ebs,target=/var/lib/mysql \
+         mysql
+#+END_SRC
+** container storage interface
+** persistent volumes
+* networking
+** basics
+- switching
+- routing
+  - router is another device with multiple ip addresses
+  - each ip address acts as an gateway to another network
+- *key command*
+#+BEGIN_SRC shell
+  ip link #list and modify interfaces on the host
+  ip addr #to see the ip address assign to those interfaces
+  ip addr add 192.168.1.10/24 dev eth0 #set ip addresses on the interfaces, ephemeal
+  ip route #view routing table
+  route #add enteries to the routing table
+  ip route add 192.168.1.0/24 via 192.168.2.1 #add enteries to the routing table
+  cat /proc/sys/net/ipv4/ip_forward #check if ip forwardin is enabled across interfaces
+#+END_SRC
+- DNS
+  - =/etc/hosts=
+  - name resolution
+  - =cat /etc/resolv.conf=
+  - nameserver
+  - *lookup precedence is controlled by entry in* ~/etc/nsswitch.conf~
+  #+BEGIN_EXAMPLE
+  passwd:   files nis
+  group:    files nis
+
+  hosts:    files dns myhostname
+  #+END_EXAMPLE
+  - ~8.8.8.8~ is a common nameserver hosted by google that know about all websites
+  - domain names
+  - search domains
+#+BEGIN_SRC /etc/resolv.conf
+nameserver 192.168.1.100
+search     mycompany.com prod.mycompany.com
+
+*#ping web ---> ping web.mycompany.com*
+#+END_SRC
+ - Record Types
+   - *A*       --> web-server --> x.x.x.x                # ipv4
+   - *AAAA*    --> web-server --> 2001:09898:nbcvx:cxcgh # ipv6
+   - *CNAME*   --> web-server --> eat.web-server, hubgry.web-server
+ - *nslookup* queries the dns server
+ - *dig*
+** network namespaces
+- container has a network namespace
+  - veth0
+  - routing table
+  - ARP table
+- commands
+#+BEGIN_SRC shell
+ip netns add red # add a network namespace
+ip netns # list network namespace
+
+ip link # see interfaces on host
+
+ip netns exec red ip link #execute command on network namespace
+ip -n red link #execute command on network namespace
+#+END_SRC
+- virtual switch (bridge)
+** docker networking
+- none
+- host
+- bridge
+** CNI
+- docker
+- rkt
+- mesos
+- k8s
+- bridge
+- *CNI* defines a set of responsibilities for plugins and container runtimes
+- docker does not support CNI.
+  - it has its own called CNM (Container Network Model)
+- how k8s works with docker
+  - create containers without network ~docker run --network=none nginx~
+  - then add the network plugin configuration manually ~bridge add 2e34ef98 /var/run/netns/2e34ef98~
+** cluster networking
+- each node master or worker
+  - interface
+  - ip
+  - hostname
+  - mac address
+- which ports to open
+|-----------------------------+---------------|
+| component                   |          port |
+|-----------------------------+---------------|
+| etcd                        |          2379 |
+| kube-api                    |          6443 |
+| kubelet                     |         10250 |
+| kube-scheduler              |         10251 |
+| kube-controller-manager     |         10252 |
+| For services on worker node | 30000 - 32767 |
+|-----------------------------+---------------|
+
+- handy commands
+#+BEGIN_SRC shell
+ip link
+
+ip addr
+
+ip addr add 192.168.1.10/24 dev eth0
+
+ip route
+
+ip route add 192.168.1.0/24 via 192.168.2.1
+
+cat /proc/sys/net/ipv4/ip_forward
+
+arp
+
+netstat -plnt
+
+route
+#+END_SRC
+** pod networking
+- every pod has an ip address
+- evry pod should be able to commuinicate with other pod on the same node
+- evry pod should be able to commuinicate with other pod on the other node without NAT
+** cni in k8s
+- configured in kubelet
+- ~/etc/cni/net.d/~
+** ip address management (ipam)
+- plugin is responsible for it
+- CNI plugins ~DHCP~ and ~host-local~
+- commands
+  - ~ip addr show weave~
+** service networking
+- *kube-proxy*
+  - acts on servcies
+  - creates the forwarding rules
+  - usersapces, ipvs or iptables
+  - ~--service-cluster-ip-range=10.96.0.0/12~ ==> ~10.96.0.0 --> 10.111.255.255~
+  - *iptables*
+    - ~iptables -L -t net | grep db-service~
+    - ~/cat /var/log/kube-proxy.log~
+- service details
+  - is a virtual object
+  - service IP is picked from a predefined IP range ~--service-cluster-ip-range~ 
+  - forwarding rules are created for forwarding traffic from *service ip + port* to *pod ip + port*
+  - *pod ip range should not overlap with service ip range*
+- ClusterIP
+  - service is not bound to a node
+  - it is available across cluster
+- NodePort
+  - avaialble internally
+  - also externally with ~NodePort~ on each node
+** dns in k8s
+- each service has a dns record
+- pod dns not created by default, but can be enabled
+
+|------------+-----------+------+---------------+---------------|
+| hostname   | Namespace | type | root          |    ip address |
+|------------+-----------+------+---------------+---------------|
+| webservice | apps      | svc  | cluster.local | 10.107.47.188 |
+| 10-244-2-5 | apps      | pod  | cluster.local | 10.244.2.5    |
+|------------+-----------+------+---------------+---------------|
+** coredns
+- deployed as a pod
+- ~/etc/coredns/Corefile~
+- plugins
+- there is a k8s plugin
+- config is a ConfigMap
+- kubelet knows ip and name  of dns server
+- *PODS always need FQDN for lookup*
+** ingress
+- ingress controller
+- ingress resources
+- paths
+- default backend
+* installing a k8s cluster
+** design
+** HA
+|-------------------------------+------------------+-------------------------|
+| component                     | HA type          |                         |
+|-------------------------------+------------------+-------------------------|
+| kube-apiserver                | Active - Active  | use a load balancer     |
+|-------------------------------+------------------+-------------------------|
+| scheduler, controller manager | Active - Passive | leader election process |
+|                               |                  |                         |
+
+- controller-manager/scheduler
+  - kube-controller-manager *Lock on Endpoint* 
+#+BEGIN_SRC shell
+  kube-controller-manager --leader-elect true \
+                          --leader-elect-lease-duration 15s \
+                          --leader-elect-renew-deadline 10s \
+                          --leader-elect-retry-period 2s
+#+END_SRC 
+- etcd
+  - toplogy 1
+    - Stacked toloplogy
+      - etcd also with master node
+    - external etcd topology
+      - etcd runnin in separate vm
+** etcd HA
+- one node is leader for write
+- followers forwards writes to leader
+- leader ensures copies of write are propagated
+- write is only considered complete if written to all followers (or majority of quorum)
+- *RAFT*
+- *m = n/2+1*
+- odd number works again in network segmentation
+- =export ETCDCTL_API=3= 
+* installing with kubeadm
+** commands
+#+BEGIN_SRC shell
+  cat /etc/os-release
+  kubeadm version -o short
+  kubelet --version
+  kubeadm token create --print-join-command
+#+END_SRC
+* e2e tests
+* troubleshooting
+** application failure
+- =kubectl logs web --previous=
+** control plane failures
+- =cat /etc/systemd/system/kubelet.service.d/10-kubeadm.conf=
+- ~staticPodPath~
+** node failures
+- =top=
+- =df -h=
+- =service kubelet status=
+- =sudo journalctl -u kubelet=
+- =openssl x509 -in /var/lib/kubelet/worker-1.crt -txt=
+  - Issue = KUBERNETES-CA
+  - O = system:nodes
+- =service kubelet start=
+* json/yaml
+- root element is denoted by ~$~
+#+BEGIN_SRC shell
+  $[0]
+  $[?(@ > 40)]
+  $[?(@ == 40)]
+  $[?(@ != 40)]
+  $[?(@ in [40,43,66])]
+  $[?(@ nin [40,43,66])]
+  $.car.wheels[?(@.location == "rear-right")].model
+  $.*.color
+  $[*].model
+  $.*.wheels[*].model
+  $[0:8] #get first eight items
+  $[0:8:2] #get items from 0 to 8 with step value of 2 i.e. 0,2,4,6
+  $[-1] #last item in th elist
+  $[-1] #last item
+  $[-3:] last three items
+
+  kubectl get pods -o jsonpath='{.items[0].spec.containers[0].image}'
+
+  kubectl get nodes -o jsonpath='{.items[*].metadata.name}{.items[*].status.capacity.cpu}'
+
+  kubectl get nodes -o jsonpath='{.items[*].metadata.name}{"\n"}{.items[*].status.capacity.cpu}'
+
+  #loops
+  kubectl get nodes -o jsonpath='{range.items[*]}{.metadata.name}{"\t"}{.status.cpacity.cpu}{"\n"}{end}'
+
+  # custom columns
+  kubectl get nodes -o=custom-columns=NODE:.metadata.name,CPU:.status.capacity:cpu
+
+  # sort by
+  kubectl get nodes --sort-by=.metadata.name
+
+
+#+END_SRC
+* Advance kubectl commands
+#+BEGIN_SRC shell
+  kubectl config set-context $(kubectl config current-context) --namespace=dev
+  kubectl -n development auth can-i update pods --as=john
+  systemctl status kubelet
+#+END_SRC
