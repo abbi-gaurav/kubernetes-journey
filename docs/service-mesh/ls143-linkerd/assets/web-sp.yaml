@@ -1,0 +1,22 @@
+apiVersion: linkerd.io/v1alpha2
+kind: ServiceProfile
+metadata:
+  creationTimestamp: null
+  name: web-svc.emojivoto.svc.cluster.local
+  namespace: emojivoto
+spec:
+  retryBudget:
+    retryRatio: 0.0001
+    minRetriesPerSecond: 1
+    ttl: 1s
+  routes:
+  - condition:
+      method: GET
+      pathRegex: /api/list
+    name: GET /api/list
+  - condition:
+      method: GET
+      pathRegex: /api/vote
+    name: GET /api/vote
+    timeout: 500ms
+    isRetryable: true

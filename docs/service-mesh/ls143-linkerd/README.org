@@ -1,0 +1,51 @@
+* service mesh
+- observability
+  - Collecting real-time telemetry from the system to infer the health of each of the services.
+- security
+  - Ensuring that communication between services is confidential, authenticated, and authorized.
+- reliability
+  - Ensuring that overall application health is maximized, even in the face of partial failures.
+- The features that the service mesh provides are all accomplished by measuring and manipulating the traffic between services
+- service mesh works by operating and measuring the traffic between services
+- 4 golden signals
+  - latency
+  - traffic (requests per second)
+  - error
+  - saturation
+* evolution
+- finagle
+- client lib and server lib
+- then came linkerd in 2016
+- now control plane written in go
+- data plane proxy/sidecar written in rust
+- east-west traffic
+- north-south traffic
+- Netflix developed Hystrix, Google developed the Stubby libraries, and Twitter developed a library called Finagle
+- 
+* internals
+- iptables rules manipulation
+- via init container or
+  - needs elevated priviliges
+- via CNI plugin
+  - already run in elevated context
+- load balancing
+  - at the request level
+  - k8s does at connection level
+- traffic detection
+* linkerd with ambassador on k3d
+#+begin_src shell
+  # install k3d without traefik
+  k3d cluster create --k3s-server-arg '--no-deploy=traefik' -p "8081:80@loadbalancer"
+
+  # install linkerd
+  linkerd install | kubectl apply -f -
+
+  # install ambassador
+  kubectl apply --namespace ambassador \
+          --filename https://getambassador.io/yaml/ambassador/ambassador-crds.yaml \
+          --filename https://getambassador.io/yaml/ambassador/ambassador-rbac.yaml \
+          --filename https://getambassador.io/yaml/ambassador/ambassador-service.yaml
+
+  # try out thi quote service
+  # https://rancher.com/blog/2020/deploy-an-ingress-controllers
+#+end_src

@@ -40,3 +40,62 @@
 - all nodes are ready
 - all smoke tests pass
   - https://github.com/mmumshad/kubernetes-the-hard-way/blob/master/docs/15-smoke-test.md
+* etcd
+** backup
+- downlaod etcd binaries only required is *etcdctl*
+- https://github.com/etcd-io/etcd/releases/tag/v3.4.3
+#+BEGIN_SRC shell
+  #verfiy all flags are correct
+  sudo ETCDCTL_API=3 /tmp/etcd-download-test/etcdctl \
+       --cacert="/etc/kubernetes/pki/etcd/ca.crt" \
+       --cert="/etc/kubernetes/pki/etcd/server.crt" \
+       --key="/etc/kubernetes/pki/etcd/server.key" \
+       --endpoints=127.0.0.1:2379 \
+       member list
+
+    sudo ETCDCTL_API=3 /tmp/etcd-download-test/etcdctl \
+         --cacert="/etc/kubernetes/pki/etcd/ca.crt" \
+         --cert="/etc/kubernetes/pki/etcd/server.crt" \
+         --key="/etc/kubernetes/pki/etcd/server.key" \
+         --endpoints=127.0.0.1:2379 \
+         snapshot save /tmp/etcd-bakup.db
+
+  sudo ETCDCTL_API=3 /tmp/etcd-download-test/etcdctl \
+         --cacert="/etc/kubernetes/pki/etcd/ca.crt" \
+         --cert="/etc/kubernetes/pki/etcd/server.crt" \
+         --key="/etc/kubernetes/pki/etcd/server.key" \
+         --endpoints=127.0.0.1:2379 \
+         snapshot status -w table /tmp/etcd-bakup.db
+#+END_SRC
+** restore
+#+BEGIN_SRC shell
+  sudo ETCDCTL_API=3 /tmp/etcd-download-test/etcdctl \
+           --cacert="/etc/kubernetes/pki/etcd/ca.crt" \
+           --cert="/etc/kubernetes/pki/etcd/server.crt" \
+           --key="/etc/kubernetes/pki/etcd/server.key" \
+           --endpoints=127.0.0.1:2379 \
+           --data-dir="/var/lib/etcd-from-backup" \
+           --initial-cluster=master-1=https://192.168.5.11:2380 \
+           --name=master-1 \
+           --initial-advertise-peer-urls=https://192.168.5.11:2380 \
+           --initial-cluster-token="etcd-cluster-from-backup" \
+           snapshot restore /tmp/etcd-bakup.db
+
+  #verify
+  sudo ETCDCTL_API=3 /tmp/etcd-download-test/etcdctl \
+       --cacert="/etc/kubernetes/pki/etcd/ca.crt" \
+       --cert="/etc/kubernetes/pki/etcd/server.crt" \
+       --key="/etc/kubernetes/pki/etcd/server.key" \
+       --endpoints=127.0.0.1:2379 \
+       member list
+
+#+END_SRC
+* encryption at rest
+#+BEGIN_SRC shell
+  sudo ETCDCTL_API=3 /tmp/etcd-download-test/etcdctl \
+         --cacert="/etc/kubernetes/pki/etcd/ca.crt" \
+         --cert="/etc/kubernetes/pki/etcd/server.crt" \
+         --key="/etc/kubernetes/pki/etcd/server.key" \
+         --endpoints=127.0.0.1:2379 \
+         get /registry/secrets/default/kubernetes-the-hard-way
+#+END_SRC

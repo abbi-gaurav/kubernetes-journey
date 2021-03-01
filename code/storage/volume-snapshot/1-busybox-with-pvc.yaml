@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: busybox
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox
+spec:
+  containers:
+  - name: busybox
+    image: busybox
+    volumeMounts:
+    - name: busybox-storage
+      mountPath: /data
+    ports:
+    - containerPort: 6379
+    command:
+      - sleep
+      - "3600"
+  volumes:
+  - name: busybox-storage
+    persistentVolumeClaim:
+      claimName: busybox
+

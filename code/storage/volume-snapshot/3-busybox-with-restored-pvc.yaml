@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: busybox-restored
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: default
+  resources:
+    requests:
+      storage: 1Gi
+  dataSource:
+    name: volume-snapshot
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox
+spec:
+  containers:
+  - name: busybox
+    image: busybox
+    volumeMounts:
+    - name: busybox-storage
+      mountPath: /data
+    command:
+      - sleep
+      - "3600"
+  volumes:
+  - name: busybox-storage
+    persistentVolumeClaim:
+      claimName: busybox-restored
+

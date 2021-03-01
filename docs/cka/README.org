@@ -342,7 +342,9 @@ kubectl api-resources --namespaced=false
 * networking
 ** basics
 - switching
+  - switch creates a network connecting 2 computers
 - routing
+  - connects 2 networks
   - router is another device with multiple ip addresses
   - each ip address acts as an gateway to another network
 - *key command*
@@ -353,7 +355,7 @@ kubectl api-resources --namespaced=false
   ip route #view routing table
   route #add enteries to the routing table
   ip route add 192.168.1.0/24 via 192.168.2.1 #add enteries to the routing table
-  cat /proc/sys/net/ipv4/ip_forward #check if ip forwardin is enabled across interfaces
+  cat /proc/sys/net/ipv4/ip_forward #check if ip forwarding is enabled across interfaces
 #+END_SRC
 - DNS
   - =/etc/hosts=
@@ -599,6 +601,8 @@ route
   # sort by
   kubectl get nodes --sort-by=.metadata.name
 
+  # using @
+  kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type == "InternalIP")].address}'
 
 #+END_SRC
 * Advance kubectl commands
@@ -606,4 +610,85 @@ route
   kubectl config set-context $(kubectl config current-context) --namespace=dev
   kubectl -n development auth can-i update pods --as=john
   systemctl status kubelet
+#+END_SRC
+* linux tools
+** systemd
+- acts upon =unit=
+- most common type is =service=
+#+BEGIN_SRC shell
+  sudo systemctl status etcd.service
+  sudo systemctl status etcd
+
+  sudo systemctl daemon-reload
+
+  #start automatically at boot
+  sudo systemctl enable kube-apiserver
+
+  sudo systemctl restart etcd
+
+  # reload the service without interrupting normal functionality
+  sudo systemctl reload nginx.service
+
+  #list units
+  systemctl list-units
+  systemctl list-units --all #including non-active ones
+
+  # list unit files
+  systemctl list-unit-files
+
+  # see all log enteries
+  journalctl
+
+  # only from current boot
+  journalctl -b
+
+  # only kernel messages
+  journalctl -k
+
+  #only kernel messages from current boot
+  journalctl -k -b
+
+  #logs for a service
+  sudo journalctl -b -u kube-apiserver
+
+  # contents of unit file
+  sudo systemctl cat etcd.service
+
+  # list dependcies
+  sudo systemctl list-dependencies etcd
+  sudo systemctl list-dependencies --all etcd #recursive
+
+  # low level details
+  sudo systemctl show etcd.service
+
+  # edit a service
+  export SYSTEMD_EDITOR=/bin/vi
+  sudo -E systemctl edit etcd.service
+  sudo systemctl daemon-reload
+#+END_SRC
+
+- restore etcd
+
+#+BEGIN_SRC shell
+sudo systemctl stop kube-apiserver
+
+#run etcd restore command
+
+#update etcd service
+sudo vi /etc/systemd/system/etcd.service
+
+#change
+--data-dir=/var/lib/etcd-from-backup
+--initial-cluster-token etcd-cluster-1
+
+sudo systemctl daemon-reload
+sudo systemctl stop etcd
+sudo systemctl start etcd
+sudo systemctl start kube-apiserver
+#+END_SRC
+* last look
+#+BEGIN_SRC shell
+  cat /proc/sys/net/ipv4/ip_forward #check if ip forwarding is enabled across interfaces
+  sudo cat /etc/sysctl.conf #to enable packet forwarding across interfaces on reboots
+
 #+END_SRC
