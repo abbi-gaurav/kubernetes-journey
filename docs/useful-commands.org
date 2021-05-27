@@ -1,0 +1,23 @@
+* loop with waiting for a variable to be set
+while [[ -z $PV ]]; do PV=$(kubectl get pvc wp-repd-wordpress -o jsonpath='{.spec.volumeName}'); echo "Waiting for PV..."; sleep 2; done
+* print creds in style
+cat - <<EOF
+Username: user
+Password: $(kubectl get secret --namespace default wp-repd-wordpress -o jsonpath="{.data.wordpress-password}" | base64 --decode)
+EOF
+* kubectl apply with EOF
+kubectl apply -f - <<EOF
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: repd-west1-a-b-c
+provisioner: kubernetes.io/gce-pd
+parameters:
+  type: pd-standard
+  replication-type: regional-pd
+  zones: us-west1-a, us-west1-b, us-west1-c
+EOF
+* json path node name
+NODE=$(kubectl get pods -l app.kubernetes.io/instance=wp-repd  -o jsonpath='{.items..spec.nodeName}')
+* jsonpath for label
+ZONE=$(kubectl get node $NODE -o jsonpath="{.metadata.labels['failure-domain\.beta\.kubernetes\.io/zone']}")
