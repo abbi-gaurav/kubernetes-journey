@@ -21,3 +21,5 @@ EOF
 NODE=$(kubectl get pods -l app.kubernetes.io/instance=wp-repd  -o jsonpath='{.items..spec.nodeName}')
 * jsonpath for label
 ZONE=$(kubectl get node $NODE -o jsonpath="{.metadata.labels['failure-domain\.beta\.kubernetes\.io/zone']}")
+* run last command and set env variables
+read account resource_group <<< $(!! | tail -1)

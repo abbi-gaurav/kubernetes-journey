@@ -1,0 +1,44 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: "web-api-rbac"
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: web-api
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/default/sa/sleep","cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: "recommendation-rbac"
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: recommendation
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/default/sa/web-api"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: "purchase-history-rbac"
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: purchase-history
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/default/sa/recommendation"]

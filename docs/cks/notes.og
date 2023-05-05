@@ -1,0 +1,558 @@
+* useful commands
+#+begin_src bash
+  #restart a linux service
+  systemctl restart kubelet.service
+
+  #check the service file
+
+  #check the OS release
+  cat /etc/*release*
+
+  pgrep -a nginx
+
+  cat ca.crt | base64 | tr -d '\n'
+
+  #create cluster role for psp
+  k -n team-red create clusterrole psp-mount --verb=use \
+    --resource=podsecuritypolicies --resource-name=psp-mount
+
+  #run kube-bench
+  kube-bench master
+
+  #read secret using service account token
+  curl https://kubernetes.default/api/v1/namespaces/restricted/secrets -H "Authorization: Bearer $(cat /run/secrets/kubernetes.io/serviceaccount/token)" -k
+
+  #get process
+  ps aux | grep {process-name}
+
+  #strace
+  strace -p {procee id}
+
+  #truncate a file
+  truncate -s 0 {file name}
+#+end_src
+* cluster setup and hardening
+** kubelet
+[[./assets/kubelet-security.png]]
+#+begin_src bash
+  # check current configuration
+  ps -aux | grep kubelet
+
+  curl -sk https://localhost:10250/pods
+  curl -sk https://localhost:10250/logs/syslog
+#+end_src
+- ports
+  - 10250: all apis
+  - 10255: read only unauthenticated (metrics)
+    - =--read-only-port=10255= / =readOnlyPort: 10255=
+    - if set to 0, then disabled
+- authntication
+  - ~--anonymous-auth=false~ / =authentication.anonymous.enabled = false=
+  - x509
+  - api based bearer token
+- authorization
+  - default is ~AlwaysAllow~
+  - other is ~Webhook~
+** kubectl proxy
+** securing k8s dashboard
+
+#+begin_src bash
+  #access a k8s dashboard via kubectl proxy
+  curl https://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy
+
+#+end_src
+** verifying platform binaries
+- checksum and hash verification
+- =shasum -a 512 kubernetes.tar.gz= //MAC
+- =sha512sum kubernetes.tar.gz== //linux
+** k8s upgrade
+
+[[./assets/k8s-upgrade-versions.png]]
+
+[[./assets/kubeadm-upgrade.png]]
+
+[[./assets/node-upgrade.png]]
+
+- only 3 recent versions are supported
+- upgrade one minor version at a time
+*** kubeadm
+#+begin_src bash
+  kubeadm upgrade plan
+  kube upgrade apply
+#+end_src
+** network policies
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+policyTypes:
+- Ingress
+- Egress
+egress:
+- to:
+  - ipBlock:
+      cidr: 192.168.5.10/32
+  ports:
+    protocol: TCP
+    port:80
+ingress:
+- from: # each entry is an OR
+  - podSelector:
+      matchLabels:
+        name: api-pod
+    namespaceSelector:
+      matchLabels:
+        name: prod
+  - ipBlock:
+      cidr: 192.168.10.5/32
+  ports:
+  - protocol: TCP
+    port: 3306
+#+end_src
+** ingress
+#+begin_src yaml
+  nginx.ingress.kubernetes.io/rewrite-target: /
+  nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#+end_src
+[[./assets/ingress.png]]
+ [[./assets/ingress-2.png]]
+** docker service configuration
+[[./assets/docker-service-config.png]]
+#+begin_src bash
+  systemctl start docker
+  systemctl status docker
+  systemctl stop docker
+
+  dockerd --debug \
+          --host=tcp://192.168.35.45:2376 \
+          --tls=true \
+          --tlscert=/var/docker/server.pem \
+          --tlskey=/var/docker/serverkey.pem
+  # /var/run/docker.sock
+
+  export DOCKER_HOST="tcp://192.168.35.45:2376" #2375 for unencrypted traffic
+  export DOCKER_TLS=true
+  export DOCKER_TLS_VERIFY=true
+  docker ps #drop certs in ~/.docker directory
+docker --tlscert=<> --tlskey=<> --tlscacert=<> ps
+#+end_src
+#+begin_src JSON
+#/etc/docker/daemon.json
+{
+"debug" : true,
+"hosts" : ["tcp://192.168.35.45:2376"],
+"tls" : true,
+"tlscert": "/var/docker/server.pem",
+"tlskey" : "/var/docker/serverkey.pem",
+"tlsverify" : true,
+"tlscacert" : "/var/docker/caserver.pem"
+}
+#+end_src
+*** securing docker server / host
+- disable password based authentication
+- enable ssh key based authentication
+- disable any unrequired ports
+- determine users who need access
+- for external access, if must
+  - only use non-public facing interfaces
+  - use tls
+* system hardening
+- least privilege
+- remove obsolete software
+- limit access
+- remove obsolete services
+- restrict / remove obsolete kernel modules
+- identify / fix open ports
+** limit node access
+- private network , vpn access
+- or, restricted access e.g. to certain ip ranges
+*** linux account types
+1. user account
+2. super user account (UID=0)
+3. system accounts (e.g. mail, ssh)
+4. service accounts (e.g. nginx)
+#+begin_src bash
+  #gives info about user
+  id
+
+  # users logged in
+  who
+
+  # last time users logged in
+  last
+#+end_src
+*** access control files
+- located in =/etc/= or =/etcd= directory
+- /etc/passwd
+  - basic info about user
+- /etc/shadow
+  - password
+- /etc/group
+  - info about groups
+#+begin_src bash
+  usermod -s /bin/nologin  michael
+
+  userdel bob
+
+  deluser michael admin
+
+  passwd david
+
+  groupdel devs
+
+  useradd -d /opt/sam -s /bin/bash -G admin -u 2328 sam
+#+end_src
+** ssh hardening
+#+begin_src bash
+  #disable ssh for root account
+  vi /etc/ssh/sshd_config
+  PermitRootLogin no
+  PasswordAuthentication no
+
+  systemctl restart sshd
+  systemctl reload sshd
+  service sshd restart
+#+end_src
+** privilege escalation
+[[./assets/sudo.png]]
+[[./assets/sudoers.png]]
+#+begin_src bash
+  # /etc/sudoers
+  visudo
+  sudo vi /etc/sudoers
+
+  jim ALL=(ALL) NOPASSWD:ALL
+
+  #/usr/sbin/nologin shell for root
+
+  usermod rob -G admin
+#+end_src
+** remove obsolete / unwanted packages
+#+begin_src bash
+  systemctl list-units --type service
+  systemctl status apache2
+  systemctl stop apache2
+  systemctl disable apache2
+  rm /lib/systemd/system/nginx.service
+  apt remove apache2
+
+  apt list --installed
+  apt install wget -y
+#+end_src
+** restrict kernel modules
+#+begin_src bash
+modprobe pcspkr
+lsmod
+
+cat /etc/modeprobe.d/blacklist.conf
+blacklist sctp
+
+shutdown -r now
+lsmod | grep sctp
+#+end_src
+** disable open ports
+#+begin_src shell
+  netstat -an | grep -w LISTEN
+  netstat -antp|grep 9090
+  cat /etc/servcies | grep -w 53
+#+end_src
+** iam
+** restrict nw access
+*** ufw (Uncomplicated firewall)
+#+begin_src bash
+  apt-get update
+  apt-get install ufw
+  systemctl enable ufw
+  systemctl start ufw
+
+  ufw status
+  ufw default allow outgoing
+  ufw default deny incoming
+  ufw allow from 172.168.238.5 to any port 22 proto tcp
+  ufw allow from 172.168.238.5 to any port 80 proto tcp
+  ufw allow from 172.16.100.0/28 to any port 80 proto tcp
+  ufw deny 8080
+  ufw enable
+  ufw delete deny 8080
+  ufw delete 5 #line number from status
+  ufw status numbered
+  ufw allow 1000:2000/tcp
+  ufw reset
+  ufw allow 22
+  ufw allow from 135.22.65.0/24 to any port 9091 proto tcp
+  ufw disable
+#+end_src
+** linux sys calls
+
+[[./assets/linux-kernel.png]]
+
+#+begin_src bash
+  strace touch /tmp/error.log
+
+  pidof etcd
+  strace -p 3676
+
+  strace -c touch /tmp/error.log
+#+end_src
+*** Tracee (from Aquasec)
+- sys calls from containers
+- relies on ebpf
+- run tracee as a docker container
+
+|-------------------------+-------------------------------|
+| bind mounts             | purpose                       |
+|-------------------------+-------------------------------|
+| /tmp/tracee             | default workspace             |
+| /lib/modules            | kernel headers                |
+| /usr/src                | kernel headers / dependencies |
+|-------------------------+-------------------------------|
+| Additional capabilities |                               |
+|-------------------------+-------------------------------|
+| Privileged              |                               |
+|-------------------------+-------------------------------|
+
+#+begin_src bash
+  # trace ls command
+  docker run --name tracee --privileged --pid=host \
+         -v /lib/modules:/lib/modules:ro -v /usr/src:/usr/src:ro \
+         -v /tmp/tracee:/tmp/tracee aquasec/tracee:0.4.0 --trace comm=ls
+
+  # trace all new processes
+  docker run --name tracee --privileged --pid=host \
+         -v /lib/modules:/lib/modules:ro -v /usr/src:/usr/src:ro \
+         -v /tmp/tracee:/tmp/tracee aquasec/tracee:0.4.0 --trace pid=new
+
+# trace all new containers
+  docker run --name tracee --privileged --pid=host \
+         -v /lib/modules:/lib/modules:ro -v /usr/src:/usr/src:ro \
+         -v /tmp/tracee:/tmp/tracee aquasec/tracee:0.4.0 --trace container=new
+#+end_src
+*** restricting sys call
+[[./assets/rest-sys-call-1.png]]
+[[./assets/rest-sys-call-2.png]]
+
+- seccomp
+  - [[./k8s/custom-seccomp.yaml][example]]
+|--------+----------|
+| mode 0 | disabled |
+| mode 1 | strict   |
+| mode 2 | filtered |
+|--------+----------|
+
+- docker has a built-in seccomp filter =default.json=
+- whitelist vs blacklist
+- https://github.com/genuinetools/amicontained
+  - container introspection tool
+- as of 1.20, k8s does not implement seccomp by default
+- default seccomp profile path
+  - =/var/lib/kubelet/seccomp=
+#+begin_src bash
+  grep -i seccomp /boot/config-$(uname -r)
+  #CONFIG_SECCOMP=y
+
+  docker run -it --rm --security-opt seccomp=/root/custom.json \
+       docker/whalesay /bin/sh
+
+  docker run r.j3ss.co/amicontained amicontained
+  kubectl run amicontained --image r.j3ss.co/amicontained amicontained -- amicontained
+
+  #syscall numbers
+  grep -w 35 /usr/include/asm/unistd_64.h
+#+end_src
+** AppArmor
+- restrict processes e.g. to write to a file or directory
+- linux module
+- installed by defaul in most linux systems
+| enforce    |   |
+| complain   |   |
+| unconfined |   |
+#+begin_src bash
+  systemctl status apparmor
+  aa-status
+  apt-get install -y apparmor-utils
+
+  #apparmor module must be enabled in all node where containers run
+  cat /sys/module/apparmor/parameters/enable
+  cat /sys/kernel/security/apparmor/profiles
+  cat /etc/apparmor.d/<profile-name>
+
+  #to load a profile
+  apparmor_parser /etc/apparmor.d/<profile-name>
+
+  #to disable a profile
+  apparmor_parser -R /etc/apparmor.d/<profile-name>
+  ln -s /etc/apparmor.d/<profile-name> /etc/apparmor.d/disable/
+
+  # app armor status
+  aa-status
+#+end_src
+
+- k8s
+  - apparmor module must be enabled in all node where containers run
+  - profile must be loaded on all nodes
+  - container runtime must support
+** linux capabilities
+#+begin_src bash
+  getcap /usr/bin/ping
+
+  ps -ef | grep /usr/bin/sshd | grep -v grep
+  getpcaps <pid>
+#+end_src
+* Minimize Microservice Vulnerabilities
+** security context
+- can be defined at pod and container level
+- container level takes precedence
+- capabilities can only be defined at container level
+** admission controllers
+[[./assets/configure-admission-controllers.png]]
+
+[[./assets/addimission-controllers.png]]
+[[./assets/admission-webhook.png]]
+[[./assets/webhook-config.png]]
+#+begin_src bash
+  #check enabled admission controllers
+  kube-apiserver -h | grep enable-admission-plugins
+  kubectl -n kube-system exec kube-apiserver-controlplane -- kube-apiserver -h | grep enable-admission-plugins
+  ps -ef | grep kube-apiserver | grep admission-plugins
+#+end_src
+- validating admission controllers
+- validating admission webhook
+- mutating admission controllers
+- mutating admission webhook
+** pod security policies
+[[./assets/psp.png]]
+[[./assets/example-psp.png]]
+[[./assets/psp-access.png]]
+** opa in k8s
+[[./assets/opa.png]]
+[[./assets/opa-deployment-old.png]]
+** container sandboxing
+[[./assets/cs.png]]
+- kernel is shared
+- each running container is another process on host
+- process id namespace
+** gVisor
+[[./assets/gvisor-2.png]]
+[[./assets/gvisor-1.png]]
+** kata-containers
+- nested virtualization
+- each container in its own separate lightweight vm
+[[./assets/kata.png]]
+** runtime classes
+[[./assets/image-run.png]]
+[[./assets/various-runtimes.png]]
+
+[[./assets/runtime-class.png]]
+
+[[./assets/rc-in-pod.png]]
+#+begin_src bash
+  docker run --runtime kata -d nginx
+#+end_src
+** mutual tls
+* supply chain security
+** minimize image footprint
+[[./assets/slim-imgs.png]]
+- parent vs base image
+- google container tools distroless
+** image security
+#+begin_src bash
+  #nginx ==> docker.io/library/nginx
+#+end_src
+** whitelist allowed registeries
+[[./assets/image-policy-webhook.png]]
+[[./assets/image-policy-webhook-2.png]]
+** static analysis yaml
+- kubesec
+#+begin_src bash
+  kubesec scan pod.yaml
+  curl -sSX POST --data-binary @"pod.yaml" https://v2.kubesec.io/scan
+#+end_src
+** scan images for vulnerabilities
+[[./assets/image-scan.png]]
+#+begin_src bash
+  trivy image --severity CRITICAL nginx:1.18.0
+  trivy image --severity CRITICAL,HIGH nginx:1.18.0
+  trivy image --ignore-unfixed nginx:1.18.0
+
+  docker save nginx:1.18.0 > nginx.tar
+  trivy image --input nginx.tar
+  trivy image --input /root/alpine.tar --format json --output /root/alpine.json
+#+end_src
+* monitoring, logging and runtime security
+** falco
+[[./assets/falco-arch.png]]
+[[./assets/falco-as-a-pkg.png]]
+[[./assets/falco-as-daemon-set.png]]
+[[./assets/falco-rules.png]]
+[[./assets/falco-list-macros.png]]
+[[./assets/falco-config.png]]
+[[./assets/falco-config-2.png]]
+- uses sysdig filters
+#+begin_src bash
+  #hot reload
+  cat /var/run/falco.pid
+  kill -1 $(cat /var/run/falco.pid)
+
+  systemctl status falco
+  journalctl -fu falco
+  #/etc/falco/falco.yml
+  #/usr/lib/systemd/system/falco.service
+
+  #check falco logs in syslog
+  cat /var/log/syslog | grep falco
+
+  #crictl search by container id
+  crictl ps -id {container id}
+
+  #crictl search by pod id
+  crictl pods -id {pod id}
+
+  #crictl search a pod by name
+  crictl pods | grep {pod name}
+
+  #crictl inspect a container
+  crictl inspect {container id}
+
+  #get pods with name param
+  crictl pods --name {pod name}
+
+  #list container by pod ids
+  crictl ps --pod {pod id}
+#+end_src
+** mutable vs immutable infrastructure
+- configuration drift
+- ensure immutability of containers
+#+begin_src yaml
+securityContext:
+  readOnlyRootFilesystem: true
+volumeMounts:
+- name: cacheVolume
+  mountPath: /var/cache/nginx
+- name: runtime-volume
+  mountPath: /var/run
+volumes:
+- name: cacheVolume
+  emptyDir: {}
+- name: runtime-volume
+  emptyDir: {}
+#+end_src>
+[[./assets/privileged-true-effect.png]]
+- =privileged= was able to still update root and host files despite =readonlyRootFilesystem=
+- dont's
+  - =readonlyRootFilesystem= set to false
+  - =privileged= set to true
+  - =runAsUser= 0 (root)
+** audit logs
+[[./assets/request-lifecycle.png]]
+[[./assets/audit-policy.png]]
+[[./assets/enable-auditing.png]]
+- level
+  - None
+  - Metadata
+  - Request
+  - RequestResponse

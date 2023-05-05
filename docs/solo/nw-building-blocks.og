@@ -1,0 +1,560 @@
+* commands
+#+begin_src bash
+ip address show
+
+dhclient ens4 -v
+
+apt install net-tools
+route
+
+host _gateway
+
+dig httpbin.org
+nslookup httpbin.org
+
+ping -c 1 httpbin.org
+ping -c 5 solo.io
+
+netcat -t httpbin.org 80 -v -w 3
+printf "GET /get HTTP/1.1\r\nUser-Agent: nc/0.0.1\r\nHost: httpbin.org\r\nAccept: */*\r\n\r\n" | nc httpbin.org 80 -w 3
+
+apt update && apt install traceroute -y
+traceroute httpbin.org
+dig -x 99.83.89.102 | grep dns;
+
+while true; do curl -s httpbin.org/get -o /dev/null; sleep 5; done &
+tcpdump -e -c 1 -i ens4 -v -nn dst httpbin.org and port 80 and tcp[tcpflags] == 24
+tcpdump -e -c 1 -i ens4 -v -nn src httpbin.org and port 80 and tcp[tcpflags] == 24
+
+apt install net-tools
+sysctl -w net.ipv4.ip_forward=1
+netstat -nr
+route
+
+ip addr
+
+ens4IP=$(/sbin/ip -o -4 addr list ens4 | awk '{print $4}' | cut -d/ -f1)
+echo $ens4IP
+
+ip route add 10.13.37.0/24 via $ens4IP
+route
+
+ip route del 10.13.37.0/24 via $ens4IP
+route
+
+#route between two subnets
+ip netns add sleep && ip netns add webapp
+ip link add sleepif type veth peer name webappif
+
+ip link set sleepif netns sleep
+ip link set webappif netns webapp
+
+ip -n sleep addr add 10.13.37.0/25 dev sleepif
+ip -n webapp addr add 10.13.37.128/25 dev webappif
+
+ip -n sleep link set sleepif up
+ip -n webapp link set webappif up
+
+ip -n sleep link set lo up
+ip -n webapp link set lo up
+
+#try pinging
+ip netns exec sleep ping -c6 10.13.37.128
+ip netns exec webapp ping -c6 10.13.37.0
+
+#add
+ip -n sleep route add 10.13.37.128/25 dev sleepif
+ip -n webapp route add 10.13.37.0/25 dev webappif
+
+#ping again
+ip netns exec sleep ping -c6 10.13.37.128
+ip netns exec webapp ping -c6 10.13.37.0
+
+dig httpbin.org +short
+dig httpbin.org +noall +answer
+
+dig @8.8.8.8 httpbin.org
+dig httpbin.org ANY
+dig httpbin.org NS
+dig httpbin.org +trace
+dig +answer -x 34.227.213.82
+
+curl ipinfo.io
+curl -X GET "http://httpbin.org/get" -H "accept: application/json"
+
+curl -O http://testdomain.com/testfile.tar.gz
+ls -l
+
+curl -o localtestfile.tar.gz http://testdomain.com/testfile.tar.gz
+ls -l
+
+#iptables
+iptables -t filter -L -n -v
+iptables -t raw -L -n -v
+iptables -t nat -L -n -v
+iptables -t mangle -L -n -v
+iptables -t security -L -n -v
+for i in {8001..8003}; do docker run --restart always -d -p $i:5678 hashicorp/http-echo -text="$i"; done
+iptables -t nat -L -n
+curl networking-foundations-src:8001
+curl networking-foundations-src:8002
+curl networking-foundations-src:8003
+
+iptables -R DOCKER-USER 1 -p tcp --dport 5678 -j REJECT
+
+
+iptables -R DOCKER-USER 1 -j RETURN
+iptables -t nat -I PREROUTING 1 -j DNAT -p tcp ! -i docker0 -s 0.0.0.0/0 -d 0.0.0.0/0 --dport 8003 --to 172.17.0.2:5678
+iptables -t nat -I PREROUTING 1 -j DNAT -p tcp ! -i docker0 -s 0.0.0.0/0 -d 0.0.0.0/0 --dport 8002 --to 172.17.0.2:5678
+iptables -t nat -I PREROUTING 1 -j DNAT -p tcp ! -i docker0 -s 0.0.0.0/0 -d 0.0.0.0/0 --dport 8001 --to 172.17.0.2:5678
+
+#loadbalancing
+iptables -t nat -D PREROUTING 1
+iptables -t nat -D PREROUTING 1
+iptables -t nat -D PREROUTING 1
+iptables -t nat -I PREROUTING 1 -j DNAT -p tcp ! -i docker0 -s 0.0.0.0/0 -d 0.0.0.0/0 --dport 8004 --to 172.17.0.2:5678
+iptables -t nat -I PREROUTING 1 -j DNAT -p tcp ! -i docker0 -s 0.0.0.0/0 -d 0.0.0.0/0 --dport 8004 --to 172.17.0.3:5678 -m statistic --mode random --probability 0.50
+iptables -t nat -I PREROUTING 1 -j DNAT -p tcp ! -i docker0 -s 0.0.0.0/0 -d 0.0.0.0/0 --dport 8004 --to 172.17.0.4:5678 -m statistic --mode random --probability 0.33
+
+#ipvs
+apt-get install ipvsadm -y
+export ip=$(hostname -I | awk '{print $1}')
+echo "
+-A -t $ip:8000 -s rr
+-a -t $ip:8000 -r 172.17.0.2:5678 -m
+-a -t $ip:8000 -r 172.17.0.3:5678 -m
+-a -t $ip:8000 -r 172.17.0.4:5678 -m
+" | ipvsadm -R
+ipvsadm
+
+#different distribution algo
+ipvsadm --clear
+echo "
+-A -t $ip:8005 -s wlc
+-a -t $ip:8005 -r 172.17.0.2:5678 -m -w 1
+-a -t $ip:8005 -r 172.17.0.3:5678 -m -w 1
+-a -t $ip:8005 -r 172.17.0.4:5678 -m -w 98
+" | ipvsadm -R
+ipvsadm
+
+#network namespaces
+apt install net-tools
+
+ip netns add sleep && ip netns add webapp
+
+ip netns
+ip link
+ip netns exec sleep ip link
+ip netns exec webapp ip link
+arp
+ip netns exec sleep arp
+ip netns exec webapp arp
+ip netns exec sleep route
+ip netns exec webapp route
+
+#network bridge
+ip link add app-net-0 type bridge
+ip link
+ip link set dev app-net-0 up
+
+#virtual wire
+ip link add veth-sleep type veth peer name veth-sleep-br
+ip link add veth-webapp type veth peer name veth-webapp-br
+
+ip link set veth-sleep netns sleep
+ip link set veth-webapp netns webapp
+
+ip link set veth-sleep-br master app-net-0
+ip link set veth-webapp-br master app-net-0
+
+ip -n sleep addr add 192.168.52.1/24 dev veth-sleep
+ip -n sleep link set veth-sleep up
+
+ip -n webapp addr add 192.168.52.2/24 dev veth-webapp
+ip -n webapp link set veth-webapp up
+
+ip addr add 192.168.52.5/24 dev app-net-0
+
+ip link set dev veth-sleep-br up
+ip link set dev veth-webapp-br up
+
+ping 192.168.52.1
+
+#not work
+ip netns exec webapp ping 23.185.0.4
+
+ip netns exec webapp route
+
+# fix it
+iptables -t nat -A POSTROUTING -s 192.168.52.0/24 -j MASQUERADE
+ip netns exec webapp ping 23.185.0.4
+
+# more fix required
+ip netns exec webapp route
+ip netns exec webapp ip route add default via 192.168.52.5
+sysctl -w net.ipv4.ip_forward=1
+ip netns exec webapp ping 23.185.0.4
+
+#k8s nw
+cat /var/lib/rancher/k3s/agent/etc/flannel/net-conf.json
+kubectl get nodes -A -o yaml | grep "spec:" -A 4
+
+ip a
+ip route
+
+#single pod
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-pod-1
+  labels:
+    app: example
+spec:
+  nodeName: k8s-server
+  containers:
+  - name: container-one
+    image: gcr.io/istio-release/app:1.13.7
+    ports:
+    - containerPort: 8080
+    args:
+    - --port
+    - "8080"
+    - --grpc
+    - "9080"
+    - --tcp
+    - "10080"
+  - name: container-two
+    image: gcr.io/istio-release/app:1.13.7
+    ports:
+    - containerPort: 8081
+    args:
+    - --port
+    - "8081"
+    - --grpc
+    - "9081"
+    - --tcp
+    - "10081"
+EOF
+
+#check their nic
+kubectl exec example-pod-1 -c container-one -- ip a
+kubectl exec example-pod-1 -c container-two -- ip a
+
+#second pod
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-pod-2
+  labels:
+    app: example
+spec:
+  nodeName: k8s-worker2
+  containers:
+  - name: container-one
+    image: gcr.io/istio-release/app:1.13.7
+    ports:
+    - containerPort: 8080
+    args:
+    - --port
+    - "8080"
+    - --grpc
+    - "9080"
+    - --tcp
+    - "10080"
+  - name: container-two
+    image: gcr.io/istio-release/app:1.13.7
+    ports:
+    - containerPort: 8081
+    args:
+    - --port
+    - "8081"
+    - --grpc
+    - "9081"
+    - --tcp
+    - "10081"
+EOF
+
+kubectl get pod example-pod-2 -o wide
+
+#service
+kubectl apply -f - << EOF
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: example
+  name: example-service
+spec:
+  ports:
+  - name: tcp
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: example
+EOF
+
+kubectl exec example-pod-1 -c container-one -- cat /etc/resolv.conf
+iptables -L --table nat | grep "example-service:tcp ->"
+#+end_src
+* content
+** Layer 1: Data
+The unit for our first layer, the application layer, is the data itself. We could have added different headers, a payload, or a query to the path, but for now the data is simply this:
+** Layer 2: Segment
+The transport layer is next. In this layer we encode the source and destination ports, the ability to break down and track larger requests, as well as some basic error detection into a unit called the segment. You may note that we have not actually specified any ports. That is because the http protocol assumes a destination port of 80 unless otherwise unspecified.
+** Layer 3: Packet
+Descending deeper, curl must now leverage the internet layer to determine how to navigate from source to destination. This information is encoded into a unit called the packet.
+
+At this layer we introduce:
+
+source and destination IPs
+Time To Live (TTL)
+which protocol is being leveraged among TCP, UDP, or ICMP
+and a few other bits of information.
+Once again, the simplicity of our original curl request does not present any of this information to the user. In order to determine the IP address of the host httpbin.org a process called DNS resolution is leveraged. Put simply, curl can call upon an external service to find the IP address[es] associated with our given domain httpbin.org. We will explore this process in greater detail later so that we can continue constructing our message now.
+** Layer 4: Frame
+Finally we leverage the lowest layer, the network access layer. In this layer we add information about the physical world to our message. The unit at this layer is referred to as the frame. Whereas all of the previous layers encode dynamic information, this unit leverages static/persistent information, in particular the Media Access Control (MAC) addresses of the source and destination. These MAC addresses are the unique address that is permanently associated with the physical device communicating with the network.
+
+Along with the destination and source MAC addresses, some other noteworthy pieces of information stored in this unit are the Ethertype and the 802.1Q tag. The Ethertype indicates the internet protocol being used, and is most commonly either IPv4 or IPv6 and the optional 802.1Q tag adds the ability to separate networks virtually.
+** DHCP
+The physical address is static and predefined, but where did the IP address come from? While it can sometimes be set statically, the IP address of devices is often set dynamically with something called DHCP or the Dynamic Host Configuration Protocol. DHCP allows a device to request to be identified on a network from an ip authority or group of authorities on the same physical network.
+
+If successful, DHCP will allocate:
+
+a unique IP address (valid in your local network)
+a period of time in which that claim is valid
+and the IP address of our gateway
+We can use the cli dhclient to interact with our DHCP server like this:
+** router
+When traffic is intended for an IP network that is not directly connected to the host, the traffic will need to go through a router which will forward the traffic on to another network segment closer to the target destination. Most client devices have a default gateway defined that is the router used to get traffic off the local directly attached network. Routers know how to direct network traffic onwards based on routing tables that are populated by routing protocols.
+
+Routed protocols such as IP live at Layer 3 of the OSI Model. Here is a picture of the OSI model to show you where Routing occurs:
+** MACs & subnetting
+If you recall in the previous module, each device/endpoint/VM/container/server which has network access through its locally attached interface has a physical address known as a MAC (or Media Access Control) Address. Each one is unique and the address itself is only bound to one endpoint (this can be manipulated). A MAC looks like this 00-B0-D0-63-C1-23.
+
+Also, each endpoint's MAC address is assigned by the vendor who developed this endpoint. Vendors usually own the first 6-characters of a MAC so it's easy to identify who created this endpoint.
+
+A Router has multiple interfaces with each one having it's own unique MAC address.
+
+A VM or network namespace, or container has a MAC address as well.
+
+A bridge is a multi-access device allowing for MAC addresses to find each other.
+
+A physical switch with 4/8/16/24/48 Ethernet ports is like a bridge. A VXLAN is a logical switch that provides the same function for multiple VMs.
+
+But bridges/switches aren't very smart at routing beyond electrical signals through various MACs. This is why IP addresses are important. Each IP is assigned to each endpoints MAC address. With IPs it's easy to group them logically and route to them.
+
+An IP lives in a subnet, and multiple IPs can talk to each if they are in the same subnet.
+
+Examples of a subnet.
+
+192.168.52.0/24
+172.13.37.4/30
+10.20.0.0/16
+In each subnet there is a broadcast address, and a network address both of which cannot be assigned. So, with a subnet like 192.168.52.0 /24 (or 255.255.255.0) there are 254 usable IP addresses. How is this possible? In a subnet mask, there are 32 bits of binary representation. /24 or 255.255.255.0 is 11111111.11111111.11111111.00000000 The 24 x 1s are network-bits, and 8 x 0s are host bits. The first three octets are indicative of a network address, an address that tells us how to get to more specific IPs.
+
+In this subnet usually an IP is allocated to a Router so it can know about this directly connected network while also being able to connect to other networks. This is also how a Router goes about trading information with other routers.
+
+In fact, two (or more) routers can be in the same IP subnet (a transit) and among these routers, they will trade information about the networks they know about, either through a static configuration, or dynamic one.
+** routing table
+The routing table or routing information base (RIB) is a data table stored in a router or network device that lists the routes to particular network destinations. A routing table is populated either by static routes or dynamic routes from routing protocols.
+** default route
+The default route is a Layer 3 IP configuration that that specifies the forwarding rule when no specific address for a next hop is available from the routing table. The default route in IPv4 is 0.0.0.0/0 in CIDR notation.
+** loopback route
+Default route for all packets sent to the local network address. The loopback interface IP is always 127.0.0.1.
+** routing protocol
+Routing protocols determine how routers communicate with each other to distribute route information that enables routers to select routes between nodes on a network.
+
+Routing protocols enable dynamic routing where a router is able to forward network traffic via different routes for a given destination based on the current conditions of the network including network failures.
+
+If you define every network with a static route, it becomes very difficult to manage and scale if network changes happen frequently. Dynamic Routing Protocols work through this issue. We'll discuss a very highly used routing protocol, called BGP, at the end of the module.
+** BGP
+Border Gateway Protocol (BGP) or external BGP is the routing protocol of the Internet. It is a protocol that allows the internet to exchange routing information between autonomous systems (AS). An AS is a collection of connected IP routing prefixes under the control a network operator on behalf of a single administrative entity.
+
+Within an AS, you'll find a set a networks and a group of routers sharing networks between each other. There usually will be a router called the Autonomous System Boundary Router, which will interface with another ASBR, which is a part of another AS. ASBRs have connections both inside of the AS they are attached to and a transit network which allows for two BGP speakers in different Autonomous systems to trade summarized network info.
+
+We can see Autonomous systems visualized here:
+Internal BGP is used inside autonomous systems to provide information to your internal routers. One downside to Internal BGP is the slow convergence to exchange routing information. This is because BGP was originally tuned to support larger amounts of networks in a summarized manner across different AS's. Within a single AS, while iBGP is an option, OSPF or even usage of eBGP internally (if tuned correctly) could be an option.
+
+External BGP is widely used on the internet and even for many customer private WANs (Wide Area Networks). Because network information is traded between different Autonomous Systems, convergence is much faster.
+
+BGP has many ways to be manipulated to route traffic over various AS-hops which allow preferred and higher-speed links versus more direct/closer AS's which might connect through lower-speed higher latency links.
+
+While BGP is a highly extensive topic, we will park this for now and revisit in the future in an advance network routing workshop.
+** DNS Server
+DNS servers typically ones who will provide the direct response to DNS resolutions to endpoints. Typically on a host, you will specify a DNS Server address (which normally might be picked up by DHCP), which needs to be IP reachable either locally via Layer 2 or via Layer 3 routing. If the DNS Server is reachable, it will resolve hostnames to allow your host to find its way to its destination. DNS Servers listens for request on UDP Port 53 (ever wondered where Route53 got its name?) and this is important if you have a firewall that allows or blocks traffic on certain ports. We will review DNS resolution shortly but here are some terms to be familiar with.
+
+DNS operates at Layer 7 of the OSI model.
+
+*Recursive DNS Resolver*: The immediate entity a PC/Server/Host/Endpoint will query to resolve a hostname. Usually responses may be cached for frequently queried endpoints or hostnames. This cached information is ususally stored in a database and will age out over time once these records become stale, or not frequently queried.
+
+*Root Name Server*: The Root Name Server is the next stop in the DNS resolution flow, as it's responsible for pointing the Resolver towards the Top-Level-Domain Server based on the extension of that domain like .io, .ca, .org, .com. The Internet Corporation for Assigned Names and Numbers (ICANN) oversees these Root Name Servers.
+
+*Top Level Domain Server*: TLDs house information for all domain names that share the same TLD extension such as .io, .ca, .com. The TLD Server has information for websites that end in a particular extension. The TLD will respond to the Resolver with a domain name and the Authoritative Name Server for that domain.
+
+*Authoritative Name Server*: This is the last stop, and so the Authoritative Name Server will have the answers the Resolver is looking for. It usually will contain and respond with the appropriate A/AAAA record or CNAME record and IP information, at which the host originating the request has the IP and can route traffic towards it.
+** DNS resolution
+To understand DNS resolution let's follow these steps:
+
+You open your favorite browser and proceed to enter in solo.io in the address bar and hit enter.
+Your request to solo.io is routed towards a server which happens to be a DNS resolver. This DNS resolver server usually sits with your local network, something your ISP provides you with, or something handled within the corporate network
+The DNS resolver sends the request over to the a DNS root name server which then says, go to the Top-Level-Domain Name Server.
+The TLD Name Server then locates specific name servers that have records for solo.io
+The DNS Resolver now has used the name servers to resolve solo.io to 1.2.3.4.
+At this point, we route to 1.2.3.4 from our host and can receive the expected webpage response.
+** Record Types
+Each DNS Server has a database of records that return values of various types. More specifically, when you need a name resolved, a value is return based on the record type being called on.
+
+The common record types you would run into are:
+
+A Record: This record translates a hostname to an IPv4 address
+AAAA Record: This record is the same as an A record but for IPv6 addresses
+CNAME Record: This record type translates one name to one other name
+MX Record: This record ties ownership of domain name to e-mail servers
+PTR Record: This record translates an IP address to a hostname, the reverse-lookup, or opposite of A-record
+SRV Record: This record is meant for services for a host and port combination which allows for access to specific applications on their IP and port.
+TXT Record: A record to store text-based notes, any kind of note really.
+Wikipedia has a much more expansive list of DNS record types: https://en.wikipedia.org/wiki/List_of_DNS_record_types
+** FQDN
+Fully Qualified Domain Names or FQDNs are the complete subdomain, or subdomain, and top-level domain which is directed to a particular resource or set of resources.
+
+For example, www.solo.io, where www is the sub-domain solo is the domain, and .io is the top-level domain. We are directed to the main webpage when attempting to make requests to www.solo.io. There are various use-cases for this like being able to provide strict security using Transport-layer-security (or TLS), which needs a fully qualified domain-name to add into the certificate data.
+** try dny server
+If you are interested in experimenting with DNS, there are a few options to consider. For starters, if you are using a linux host, you can always update and edit the /etc/hosts file to manually add DNS records.
+
+Pi-Hole: This is a great light-weight DNS Server but it actually is more than a DNS server.
+DNSMasq: This is widely used and is simple to deploy in a homelab
+CoreDNS: CoreDNS is a simple light-weight DNS Server written in Go. While it can be used in labs, you'll see how it's heavily utilized in Kubernetes.
+** coredns in k8s
+As introduced previously on potential DNS solutions to run at home, CoreDNS is extremely light-weight and simplistic in nature. In Kubernetes, it is used as the name service, or service discovery mechanism for all services. Every object will know about other objects using CoreDNS. When you run a container workload, inside of a construct known as a pod, and it needs to communicate with something else, CoreDNS will be the DNS resolver.
+
+Records are created and deleted, automatically, and this is because the Kubernetes Control Plane communicates with CoreDNS and updates it as necessary. We will learn a bit more about Kubernetes, and Service Discovery in future modules.
+** http headers
+When clients and servers need to communicate and pass special information over, an HTTP header is used. HTTP headers usually contain a case-insensitive name with a ":", followed by the value. Blank spaces before the value are ignored.
+
+There are a several kinds of headers:
+
+Request headers which has information about the resource being accessed
+Response headers which has additional info about responses such as GEO or the hosting server
+Representation headers which has information about the resource body
+Payload headers for information about payload data such as content length or encoding
+Authentication headers which provides capabilities for passing in credentials for a request
+** http protocol versions
+HTTP/1.1 As previously mentioned, Hypertext Transfer Protocol, or HTTP for short is an Internet Protocol living at the Application Layer of the OSI model and allows for the distributed web of media, collaboration and all other kinds of data.
+
+HTTP/2 This was an enhancement, revision and evolution of HTTP/1.1 which now introduced features like increased speed, and a reframing of how data is sent between server and client. HTTP/2 also overcomes the Head-of-line blocking problem with HTTP/1.1, by using multiplexing. HTTP runs over TCP. It also introduces TLS or Transport-Layer-Security, something very important to identity, authentication, and authorization.
+
+HTTP/3 and QUIC - Quick UDP Internet Connection This is newest version of HTTP and succeeds HTTP/2. It moves away from using TCP and uses the QUIC protocol which is the Quick UDP Internet Connection. By multiplexing a number of established connections between server and client. Additionally, retransmission of UDP packets happens at the QUIC protocol layer which allows plenty of HTTP based applications to move away from higher-latency TCP.
+** firewalls / iptables
+Firewalls are instrumental in enforcing security across any given network. They can be physical or virtual, but they all control what traffic is accepted or rejected in some form.
+
+iptables, a prevalent linux firewall, has been around for nearly a quarter of a century at this point, and it is still leveraged by some of the largest software projects around today. There is a successor in iftables to improve performance and tweak the design some, but as it is not as commonly available we will focus on fully compatible iptables configuration.
+
+As the name implies, iptables is a set of tables outlining rules for associated ip addresses and ports.
+
+There are five tables in fact:
+
+filter: the default table used to accept, reject, or drop traffic
+nat: used to do network address translation for sources and destinations
+mangle: used to mark or reconfigure some components of the message for later use
+raw: used to circumvent some of the standard network flow
+security: used to strictly enforce security with components such as SELINUX
+Within each table are a series of chains. Chains may be user defined, but the default chains (and chain order) are:
+
+PREROUTING,
+INPUT,
+FORWARD,
+OUTPUT,
+and POSTROUTING
+
+With just the ability to add chains to tables and rules to chains, programs and users can control traffic with a high degree of configurability
+
+Here is a rough outline of how traffic is parsed by iptables:
+
+the traffic enters the PREROUTING chain
+matches the only rule, which redirects to the DOCKER chain
+which will match one of the DNAT rules, converting the ip and destination port accordingly
+traffic then enters the FORWARD chain
+matches the second rule, which redirects to the DOCKER-USER chain
+and finally matches the only rule in this chain, which rejects any traffic destined for 5678 with tcp
+** ipvs
+That is however, the limit of what iptables can do.
+
+For more control over how traffic is distributed to separate instances we will need to leverage IP Virtual Server or ipvs.
+
+ipvs uses some of the same kernel technology as iptables (netfilter), but is specifically designed for traffic distribution. We can distribute traffic with ipvs following the methods below:
+
+round robin (our second iptables example)
+weighted round robin
+least-connection
+weighted least-connection
+locality-based least-connection
+locality-based least-connection with replication
+destination-hashing
+source-hashing
+With "weighted least connection" traffic is sent to the instance currently holding the least connections, but with a preference to those instances with higher numerical weights.
+
+It is worth noting that in addition to the distribution algorithms, that ipvs also supports the following methods of forwarding:
+
+direct routing (--gatewaying)
+tunneling (--ipip)
+and nat (--masquerading)
+ipvs definitely has more to offer in the loadbalancing domain than iptables did, but it too has limits.
+
+Between these two tools there is no way to make decisions on every protocol that may be leveraged within a network, or ipvs definitely has more to offer in the loadbalancing domain than iptables did, but it too has limits.
+
+Modern applications often come with custom or niche demands that can't be met by standard linux tools.
+
+This evolving set of demands is the foundation for what we call a proxy.
+** proxies
+Put simply, a network proxy is some entity that receives and distributes traffic on behalf of a client. There are many classifications of proxies, but they all roughly follow that definition.
+
+Proxies leverage the capabilities we've mentioned already along with several more to accomplish some of the following use cases: (not an exhaustive list)
+
+relaying different geolocation data than the original request
+anonymize source or destination information
+encrypt and/or generally protect sensitive information
+increasing resilience
+optimizing traffic flow
+providing observability
+Most traffic, business or personal, will probably travel through a proxy at some point.
+
+Instead of common standards like iptables and ipvs, it is more common to consider the available tools as an ecosystem.
+
+Specific proxies will suit certain use cases better than others.
+
+If you'd like to explore some of the most popular options here are a few recommendations:
+
+envoy the backbone of Istio
+haproxy one component of the RedHat OpenShift solution
+nginx one common solution for exposing traffic in Kubernetes
+** containers and network namespaces
+We are now stepping into the land of Containers!
+Containers are isolated processes that run on a single operating system. Much like virtualization, containers will consume CPU, Memory, and Disk space, but require significantly less to run, as they are dedicated to a single function or process. Any time a container is created a full operating system isn't required. A container runtime such as containerd and interactive management layer such as Docker, make it possible to manage containers and resources, locally on a singular host.
+
+Someone decides they want to create a small application to ensure it runs almost anywhere, so they decide to create a container image with the necessary binaries, libraries and language definition. There are instructions to compile the code which allows the software inside the container to be executable and return values (as required).
+
+Interestingly enough, containers are isolated through a concept called Networking Namespaces.
+
+Networking Namespaces
+Networking namespaces are used for container isolation. You can spin up a process and wrap it in networking namespace which is simply an isolated network.
+
+Since we've developed a ton of networking knowledge it's worthwhile understanding how to build a networking namespace and have processes isolated to further understand containers and the associated networking
+
+
+in order for these two network namespaces to communicate with each other, we need to either create a virtual wire or virtual bridge. If you recall in the physical world, we need a LAN/ethernet cable to connect two devices directly to each other. But we have way more than 2 devices at any given time, on a network. So we need a switch or a virtual bridge, which creates a more multi-access topology. The two network namespaces we created are representative of two different endpoints in their own isolated domain. Let's bridge them together.
+So the best way to fix this is to use the Linux bridge functionality
+** k8s networking
+*Services*
+The answer today is a combination of IPTables and DNS.
+
+All kubernetes clusters have a local dns service that is available through an IP in the service CIDR and loaded into every container.
+
+
+NodePort services open a port in the range 30000-32767 on every host and leverage kube-proxy to route to the designated workloads.
+
+LoadBalancer services build upon NodePorts. Working in conjunction with an external controller, a physical or virtual loadbalancer is provisioned to route traffic to a generated or configured NodePort.
+
+The implementation of LoadBalancer services will vary greatly depending on your kubernetes distribution, but in most cases a virtual or physical solution should be available.

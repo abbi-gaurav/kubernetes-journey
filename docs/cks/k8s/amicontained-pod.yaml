@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  annotations:
+    sidecar.istio.io/inject: "false"
+  labels:
+    run: amicontained
+  name: amicontained
+spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - args:
+    - amicontained
+    image: r.j3ss.co/amicontained
+    name: amicontained
+    resources: {}
+    securityContext:
+      allowPrivilegeEscalation: false
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+status: {}

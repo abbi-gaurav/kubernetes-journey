@@ -1,0 +1,133 @@
+* Lab
+- https://play.instruqt.com/soloio/invite/fey2wx47io3x
+- governmentpaas/curl-ssl:terraform-14 (sleep image)
+- docker.io/kennethreitz/httpbin
+* commands
+#+begin_src shell
+  kubectl create cm envoy --from-file=envoy.yaml=./labs/01/envoy-conf.yaml -o yaml --dry-run=client | kubectl apply -f -
+  kubectl apply -f labs/01/envoy-proxy.yaml
+
+  kubectl exec -n istio-system deploy/istiod-1-8-3 -- pilot-discovery request GET /debug/registryz
+
+  istioctl kube-inject -f labs/01/httpbin.yaml --meshConfigMapName istio-1-8-3 --injectConfigMapName istio-sidecar-injector-1-8-3  | kubectl apply -f -
+
+  kubectl -n prometheus port-forward statefulset/prometheus-prom-kube-prometheus-stack-prometheus 9090 --address 0.0.0.0
+
+  kubectl create serviceaccount kiali-dashboard -n istio-system
+  kubectl create clusterrolebinding kiali-dashboard-admin --clusterrole=cluster-admin --serviceaccount=istio-system:kiali-dashboard
+
+  kubectl get secret -n istio-system -o jsonpath="{.data.token}" $(kubectl get secret -n istio-system | grep kiali-dashboard | awk '{print $1}' ) | base64 --decode
+
+  istioctl proxy-config routes deploy/istio-ingressgateway.istio-ingress
+
+  kubectl get secret -n istio-ingress istioinaction-cert -o jsonpath="{.data['tls\.crt']}" | base64 -d | step certificate inspect -
+
+  istioctl install -y -n istio-system -f labs/04/control-plane-reduce-gw-config.yaml --revision 1-8-3
+
+  istioctl pc clusters deploy/istio-ingressgateway -n istio-ingress
+
+  kubectl get deploy/istiod-1-8-3 -n istio-system -o jsonpath="{.spec.template.spec.containers[].env[?(@.name=='PILOT_FILTER_GATEWAY_CLUSTER_CONFIG')]}";
+
+  kubectl label namespace istioinaction istio.io/rev=1-8-3
+
+  kubectl rollout restart deployment web-api -n istioinaction
+
+  istioctl proxy-config clusters deploy/web-api.istioinaction --fqdn recommendation.istioinaction.svc.cluster.local -o json
+
+  istioctl proxy-config clusters deploy/web-api.istioinaction
+
+  istioctl proxy-config listener deploy/web-api.istioinaction
+
+  #proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
+
+  #sidecar.istio.io/statsInclusionPrefixes: "tls_inspector,listener.0.0.0.0_15006"
+
+  istioctl analyze -n istio-ingress
+
+  istioctl x describe service web-api -n istioinaction
+
+  istioctl proxy-status
+
+  istioctl proxy-status deploy/web-api -n istioinaction
+
+  istioctl dashboard envoy deploy/sleep --address 0.0.0.0
+
+  istioctl proxy-config log deploy/web-api -n istioinaction --level debug
+
+  istioctl proxy-config log deploy/web-api -n istioinaction --level info
+
+  istioctl proxy-config log deploy/web-api -n istioinaction --level connection:debug,conn_handler:debug,filter:debug,router:debug,http:debug,upstream:debug
+
+  kubectl exec deploy/sleep -- curl http://istiod.istio-system:15014/debug/registryz
+
+  export HTTPBIN_ID=$(kubectl get pod -l app=httpbin -o jsonpath='{.items[0].metadata.name}')
+  kubectl exec deploy/sleep -- curl http://istiod.istio-system:15014/debug/edsz?proxyID=$HTTPBIN_ID
+
+  kubectl exec deploy/sleep -- curl http://istiod.istio-system:15014/metrics
+
+  kubectl exec deploy/sleep -- curl http://istiod.istio-system:15014/version
+
+#+end_src
+
+#+begin_src yaml 
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+name: audit-web-api-authpolicy
+namespace: istioinaction
+spec:
+  selector:
+    matchLabels:
+      app: web-api
+  action: AUDIT
+  rules:
+  - from:
+    - source:
+        notNamespaces: ["istioinaction"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/*"]
+#+end_src
+
+#+begin_src yaml
+apiVersion: networking.istio.io/v1beta1
+kind: Sidecar
+metadata:
+  name: default
+  namespace: istioinaction
+spec:
+  egress:
+  - hosts:
+    - "./web-api.istioinaction.svc.cluster.local"
+    - "istio-system/*"
+    - "istio-ingress/*"
+#+end_src
+
+#+begin_src yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-api
+  annotations:
+    networking.istio.io/exportTo: "."
+spec:
+  selector:
+    app: web-api
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+#+end_src
+* notes
+- It is important to note that Istio's sample addons for Prometheus, Grafana, Kiali, etc are NOT intended for production usage. This guide will walk through a more production-like setup.
+- We will be using a realistic observability system that uses Prometheus and many other components out of the box called kube-prometheus. This project tries to curate and pre-integrate a realistic deployment, highly available deployment of Prometheus with the Prometheus operator, Grafana, and a lot of ancillary pieces like alertmanager, node-exporters, adapters for the Kube API, and others. Please see the *kube-prometheus*
+- Let's install it with a revision that matches the control plane in the istio-ingress namespace. We recommend that you install the istio-ingress gateway in a namespace that is different than istiod for better security and isolation.
+- By default, with no configuration specified, Istio will adopt a "permissive" policy which means services will be able to communicate with plaintext or mTLS, depending on what the client can do
+- As we can see, all incoming traffic goes to a listener in port 15006, and then our request makes it through the original destination. That means that we are hitting 2 listeners and increasing the tls_inspector stats once for each.
+- In summary, sidecar resource can be used per namespace as shown above, or by using using label selector per workload or globally. It is recommended to enable it per namespace or workload first before enable it globally. Sidecar resource controls the visibility of configurations and what gets pushed to the sidecar proxy. Further, sidecar resource should NOT be used as security enforcement to prevent service A to reach to service B. Istio authorization policy (or network policy for layer 3/4 traffic) should be used instead to enforce the security boundry.
+- Service owners can apply export-To in Virtual Service, Destination Rule and Service Entry resources to define a list of namespaces that the Istio networking resources can be applied to. Further, service owners can declare their services' visibility via the networking.istio.io/exportTo annotation. By default, if no export-To for these Istio resources or users' services, they are made available to all namespaces in the mesh.
+- stio supports simple virtual service resource merging for same host when there is no conflicts. This is helpful when each service owner owns the virtual service resource on his/her own. Let us explore this with the helloworld sample from Istio along with our web-api service.
+- If you want to contact us: miguel.dos.santos@solo.io ep.heijting@solo.io
+- And here the test for the badge! https://forms.gle/qB7n4Bo6vF6SSW7j8
