@@ -1,0 +1,31 @@
+* commands
+- test nginx config
+  - =nginx -t -c $(pwd)/1-nginx.conf=
+- start nginx with a conf
+  - =nginx -c $(pwd)/1-nginx.conf=
+- check for all processes with ports
+  - =sudo lsof -i -P | grep LISTEN | grep nginx=
+- reload nginx config
+  - =nginx -s reload -c $(pwd)/1-nginx.conf=
+* concepts
+** match
+- a regex match has more priority than a prefix match.
+|---------------------+----------|
+| Match type          | modifier |
+|---------------------+----------|
+| Exact               | =        |
+| Preferential Prefix | ^~       |
+| REGEX               | ~ or ~*  |
+| Prefix              | None     |
+|---------------------+----------|
+** variables
+- Variables can be of three types
+  - String
+  - Integer
+  - Boolean
+- =http "nginx-handbook.test:9091/vars?a=b"=
+** logging
+- =var/log/nginx=
+- 
+** compression
+- =curl -I -H "Accept-Encoding: gzip" http://nginx-handbook.test:9092/mini.min.css=

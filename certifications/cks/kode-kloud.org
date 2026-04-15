@@ -1,0 +1,412 @@
+* Learning lab 1
+** 5
+#+begin_src bash
+#kubelet
+kube-bench --benchmark cis-1.10 --config-dir /opt/kube-bench/cfg run --targets node
+
+#solution
+chmod 600 /usr/lib/systemd/system/kubelet.service
+chmod 600 /var/lib/kubelet/config.yaml
+
+# contrpl plane
+kube-bench --benchmark cis-1.10 --config-dir /opt/kube-bench/cfg run --targets master
+#solution update the Controller Manager and Scheduler static pod definition file to make sure that the --profiling=false and under the spec.containers.command section, add another parameter --profiling=false
+vi /etc/kubernetes/manifests/kube-controller-manager.yaml
+vi /etc/kubernetes/manifests/kube-scheduler.yaml
+
+#etcd issue
+sudo chown -R etcd:etcd /var/lib/etcd
+
+# If the user and group are not present, add them
+sudo groupadd --system etcd
+sudo useradd -s /sbin/nologin --system -g etcd etcd
+#+end_src>
+** 6
+#+begin_src yaml
+file_output:
+  enabled: true
+  keep_alive: false
+  filename: /opt/security_incidents/alerts.log
+
+# rule
+- rule: Write below binary dir
+  desc: an attempt to write to any file below a set of binary directories
+  condition: >
+    bin_dir and evt.dir = < and open_write
+    and not package_mgmt_procs
+    and not exe_running_docker_save
+    and not python_running_get_pip
+    and not python_running_ms_oms
+    and not user_known_write_below_binary_dir_activities
+  output: >
+    File below a known binary directory opened for writing (user_id=%user.uid file_updated=%fd.name command=%proc.cmdline)
+  priority: CRITICAL
+  tags: [filesystem, mitre_persistence]
+
+#+end_src>
+** 7
+#+begin_src bash
+bom generate --image-archive /root/ImageTarballs/<image_name>.tar --format json --output ~/bugged-fruit.spdx
+kubectl exec -n salad fruits-<string> -c apple -- apk info | grep curl && echo apple > ~/bugged-container.txt
+
+#+end_src>
+** 8
+Create the below admission-configuration.yaml inside /root/CKS/ImagePolicy directory in the controlplane node:
+#+begin_src yaml
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+- name: ImagePolicyWebhook
+  configuration:
+    imagePolicy:
+      kubeConfigFile: /etc/admission-controllers/admission-kubeconfig.yaml
+      allowTTL: 50
+      denyTTL: 50
+      retryBackoff: 500
+      defaultAllow: false
+#+end_src>
+
+Next, update the kube-apiserver command flags and add ImagePolicyWebhook to the enable-admission-plugins flag. Use the configuration file that was created in the previous step as the value of admission-control-config-file.
+
+Note: Remember, this command will be run inside the kube-apiserver container, so the path must be /etc/admission-controllers/admission-configuration.yaml (mounted from /root/CKS/ImagePolicy in controlplane).
+
+Edit the kube-apiserver manifest file:
+
+#+begin_src bash
+vi /etc/kubernetes/manifests/kube-apiserver.yaml
+#+end_src>
+
+to add the following flags under spec.containers.command:
+#+begin_src bash
+    - --admission-control-config-file=/etc/admission-controllers/admission-configuration.yaml
+    - --enable-admission-plugins=NodeRestriction,ImagePolicyWebhook
+#+end_src>
+** 10
+First check the status of the web-server deployment:
+#+begin_src bash
+kubectl get deployments.apps -n restricted
+#+end_src>
+then check replicaset
+#+begin_src bash
+kubectl describe replicaset -n restricted
+#+end_src>
+This confirms the pod was blocked by Pod Security Admission (PSA) because it doesn't meet the restricted security policy.
+Now, check that the namespace is labeled to enforce the restricted policy:
+According to the Events section of the replicaset, we need to make some changes in our deployment's securityContext section. Open the deployment file to edit:
+#+begin_src bash
+kubectl edit deployment web-server -n restricted
+#+end_src>
+#+begin_src yaml
+securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+      - ALL
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+#+end_src>
+** 11
+Deployment web-app is running in the products namespace.
+
+Database product-db is running in the database namespace.
+
+Create a network policy named allow-traffic-to-products that allows traffic from product-db to the web-app workload, as well as all traffic originating from the payments namespace.
+
+Utilize the labels applied on the relevant resources.
+
+First, find out the labels on the web-app deployment pod in the products namespace:
+#+begin_src bash
+kubectl get pods -n products --show-labels
+NAME                     READY   STATUS    RESTARTS   AGE    LABELS
+web-app-64cd7668-bp8nv   1/1     Running   0          133m   app=web-app,pod-template-hash=64cd7668
+
+#+end_src>
+
+Then, find out the same for the product-db deployment pod in database namespace:
+#+begin_src bash
+kubectl get pods -n database --show-labels
+NAME                          READY   STATUS    RESTARTS   AGE   LABELS
+product-db-74b9dfd7cb-hr9vf   1/1     Running   0          20m   app=database,pod-template-hash=74b9dfd7cb
+#+end_src>
+
+Then, find the labels on the database and payments namespaces:
+#+begin_src 
+kubectl get ns database --show-labels
+NAME       STATUS   AGE    LABELS
+database   Active   137m   kubernetes.io/metadata.name=database
+
+kubectl get ns payments --show-labels
+NAME       STATUS   AGE    LABELS
+payments   Active   137m   kubernetes.io/metadata.name=payments
+#+end_src>
+
+Finally, create and apply the network policy yaml with the determined labels:
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traffic-to-products
+  namespace: products
+spec:
+  podSelector:
+    matchLabels:
+      app: web-app
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: database
+      podSelector:
+        matchLabels:
+          app: database
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: payments
+#+end_src>
+** 13
+A deployment rocket-server is exposed using the service of the same name in the space namespace.
+
+Create an ingress resource named rocket-ingress to load balance the incoming traffic to the workload on path /.
+
+Use the hostname rocket-server.local in the Ingress rules.
+
+Utilize the TLS certificate stored in a secret named rocket-tls in the space namespace so that it enables TLS traffic on that ingress resource.
+
+#+begin_src 
+k describe deployment rocket-server -n space
+#+end_src>
+
+and check the Port field under Pod Template -> Containers.
+
+Then create and apply the following ingress yaml file:
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rocket-ingress
+  namespace: space
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - rocket-server.local
+      secretName: rocket-tls
+  rules:
+    - host: rocket-server.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rocket-server
+                port:
+                  number: 80
+#+end_src>
+Once that is done, check the IP address of the ingress-nginx-controller:
+#+begin_src 
+kubectl get svc -n ingress-nginx
+#+end_src>
+Then add this IP to the /etc/hosts file:
+#+begin_src 
+echo "<INGRESS-IP> rocket-server.local" | sudo tee -a /etc/hosts
+#+end_src>
+
+Finally you can check the working:
+** 15
+You need to enable auditing on this cluster. A basic policy file is available at /etc/kubernetes/cluster-policy.yaml.
+
+The logs should be stored at /var/log/cluster-audit.log. The logs should be retained for 10 days and should not exceed 10MB. A maximum of 3 files should be kept at a time.
+
+After you enable auditing on the cluster, update the basic policy file to track the following:
+
+Delete activity on secrets in the kube-system namespace at the Metadata level
+Changes to deployments in the default namespace at the Request level
+All other requests at the Metadata level
+Make sure your changes to the policy file are in effect.
+
+Note: A copy of the kube-apiserver.yaml is kept in ~/ so that you can revert if the configuration goes wrong. Make sure kube-apiserver is working fine for the sake of grading the exam.
+
+First complete the /etc/kubernetes/cluster-policy.yaml:
+#+begin_src yaml
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - "RequestReceived"
+rules:
+  - level: Metadata
+    verbs: ["delete"]
+    resources:
+      - group: ""
+        resources: ["secrets"]
+    namespaces: ["kube-system"]
+  - level: Request
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: "apps"
+        resources: ["deployments"]
+    namespaces: ["default"]
+  - level: Metadata
+#+end_src>
+
+Then add/modify the properties in the vi /etc/kubernetes/manifests/kube-apiserver.yaml file. First add these flags:
+
+#+begin_src bash
+- --audit-policy-file=/etc/kubernetes/cluster-policy.yaml
+- --audit-log-path=/var/log/cluster-audit.log
+- --audit-log-maxage=10
+- --audit-log-maxbackup=3
+- --audit-log-maxsize=10
+#+end_src>
+
+Under volumes section in the same file, add the following:
+#+begin_src yaml
+volumes:
+  - name: audit-policy
+    hostPath:
+      path: /etc/kubernetes/cluster-policy.yaml
+      type: File
+  - name: varlog
+    hostPath:
+      path: /var/log
+      type: Directory
+#+end_src>
+
+Under volumeMounts section in the same file, add the following as well:
+#+begin_src yaml
+- mountPath: /etc/kubernetes/cluster-policy.yaml
+  name: audit-policy
+  readOnly: true
+- mountPath: /var/log
+  name: varlog
+#+end_src>
+
+Save and exit the file. Then run the following command to check the status of the api server and other components:
+
+#+begin_src bash
+kubectl get pods -n kube-system
+#+end_src>
+
+Wait till all components come up in a running state.
+
+Finally, check the status of the log file:
+#+begin_src bash
+ls -l /var/log/cluster-audit.log
+#+end_src>
+
+The file should be automatically created and should now start storing logs.
+* lab 2
+** 1 
+A pod called redis-backend has been created in the prod-x12cs namespace. It has been exposed as a service of type ClusterIP. The pod listens on TCP port 6379.
+
+Create a network policy called allow-redis-access to lock down access to this pod only for the following:
+
+Any pod in the same namespace with the label backend=prod-x12cs
+
+All pods in the prod-yx13cs namespace
+
+Ensure that traffic is only allowed on TCP port 6379.
+
+All other incoming connections should be blocked.
+
+Use the existing labels when creating the network policy.
+#+begin_src yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-access
+  namespace: prod-x12cs
+spec:
+  podSelector:
+    matchLabels:
+      run: redis-backend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: prod-yx13cs
+    - podSelector:
+        matchLabels:
+          backend: prod-x12cs
+    ports:
+    - protocol: TCP
+      port: 6379
+#+end_src>
+** 2
+There is an existing CiliumNetworkPolicy
+default-allow in the namespace team-azure, which allows all traffic.
+
+In the namespace team-azure, create a CiliumNetworkPolicy as follows:
+
+Create a Layer 3 policy named p1 that denies outgoing traffic from Pods with the label role=messenger to Pods with the label role=database.
+
+#+begin_src yaml
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: p1
+  namespace: team-azure
+spec:
+  endpointSelector:
+    matchLabels:
+      role: messenger
+  egressDeny:
+  - toEndpoints:
+    - matchLabels:
+        role: database
+#+end_src>
+** 3
+A pod named apps-cluster-dash has been created in the gamma namespace using a service account called cluster-view. This service account has been granted additional permissions as compared to the default service account and can view resources cluster-wide on this Kubernetes cluster. While these permissions are important for the application in this pod to work, the secret token is still mounted on this pod.
+
+Secure the pod in such a way that the secret token is no longer mounted on this pod. You may delete and recreate the pod.
+*solution*
+Update the Pod to use the field automountServiceAccountToken: false
+
+Using this option makes sure that the service account token secret is not mounted in the pod at the location /var/run/secrets/kubernetes.io/serviceaccount
+
+Also, we need to remove the serviceAccountToken as it should not be explicitly defined within any custom volumes.
+
+Sample YAML shown below:
+#+begin_src yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: apps-cluster-dash
+  name: apps-cluster-dash
+  namespace: gamma
+spec:
+  containers:
+    - image: nginx
+      name: apps-cluster-dash
+      volumeMounts:
+        - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+          name: kube-api-access-c4mdx
+          readOnly: true
+  serviceAccountName: cluster-view
+  automountServiceAccountToken: false
+  volumes:
+    - name: kube-api-access-c4mdx
+      projected:
+        defaultMode: 420
+        sources:
+          - configMap:
+              items:
+                - key: ca.crt
+                  path: ca.crt
+              name: kube-root-ca.crt
+          - downwardAPI:
+              items:
+                - fieldRef:
+                    apiVersion: v1
+                    fieldPath: metadata.namespace
+                  path: namespace
+#+end_src>

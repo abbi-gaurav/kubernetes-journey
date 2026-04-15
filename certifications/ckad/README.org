@@ -1,0 +1,50 @@
+* docker command and entrypoint
+** command
+#+begin_src shell
+  FROM ubuntu
+  CMD ["sleep", "10"] #["cmd","param 1"]
+#+end_src
+
+#+begin_src shell
+  FROM ubuntu
+  CMD sleep 10 #cmd param 1
+#+end_src
+- fully gets overridden from commandline: =docker run ubuntu-sleeper sleep 10=
+- or none provided =docker run ubuntu-sleeper=
+** entrypoint
+#+begin_src shell
+  FROM ubuntu
+  ENTRYPOINT ["sleep"] #["cmd"]
+#+end_src
+- command arguments get appended: =docker run ubuntu-sleeper 10=
+** both together
+#+begin_src shell
+  FROM ubuntu
+  ENTRYPOINT ["sleep"] #["cmd"]
+  CMD ["10"] #["cmd","param 1"]
+#+end_src
+- default is used if none provided: =docker run ubuntu-sleeper=
+- or one can provide one: =docker run ubuntu-sleeper 5=
+- or override both =docker run --entrypoint sleep2.0 ubuntu-sleeper 4=
+* k8s commands and arguments
+#+begin_src yaml
+  spec:
+    containers:
+      - name: us
+        image: ubuntu-sleeper
+        commmand: ["sleep2.0"] #entrypoint
+        args: ["7"] #cmd
+#+end_src
+
+* CronJobs
+- schedule =* * * * *=
+  - minute 0-59
+  - hour 0-23
+  - day of the month 1-31
+  - month 1-12
+  - day of the week 0-6
+
+* headless service
+=podName.serviceName.namespace.svc.cluster.local=
+* Helm commands
+

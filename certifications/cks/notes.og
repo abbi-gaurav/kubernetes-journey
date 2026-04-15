@@ -1,0 +1,1139 @@
+* links
+- https://notes.kodekloud.com/docs/Certified-Kubernetes-Security-Specialist-CKS/Introduction/Course-Introduction
+- https://github.com/kodekloudhub/certified-kubernetes-security-specialist-cks-course
+- https://github.com/kodekloudhub/community-faq/blob/main/docs/diagnose-crashed-apiserver.md
+* useful commands
+#+begin_src bash
+  #restart a linux service
+  systemctl restart kubelet.service
+
+  #check the service file
+
+  #check the OS release
+  cat /etc/*release*
+
+  pgrep -a nginx
+
+  cat ca.crt | base64 | tr -d '\n'
+
+  #create cluster role for psp
+  k -n team-red create clusterrole psp-mount --verb=use \
+    --resource=podsecuritypolicies --resource-name=psp-mount
+
+  #run kube-bench
+  kube-bench master
+
+  #read secret using service account token
+  curl https://kubernetes.default/api/v1/namespaces/restricted/secrets -H "Authorization: Bearer $(cat /run/secrets/kubernetes.io/serviceaccount/token)" -k
+
+  #get process
+  ps aux | grep {process-name}
+
+  # kill process
+  pkill -f "kubectl proxy"
+  ps aux | grep 'kubectl proxy' | grep "8090"
+  kill <process_id>
+
+  #strace
+  strace -p {procee id}
+
+  #truncate a file
+  truncate -s 0 {file name}
+
+  # check if a service account can get pods
+  kubectl auth can-i get pods --as=system:serviceaccount:default:my-service-account -n kube-system
+#+end_src
+* understanding the k8s attack surface
+** The attack
+#+begin_src bash
+  # get the IPs of both site
+  ping www.result.com
+  ping www.vote.com
+
+  # do a port scan of the IP address
+
+  # run the docker commands to see the containers running and other details
+  docker -H <IP> ps
+  docker -H <IP> version
+
+  # run a privileged container
+  docker -H <HOST> run --privileged -it ubuntu bash
+
+  # install dirty cow to escape to the host
+
+  # List iptable rules
+  sudo iptables -L -t nat | grep kubernetes-dashboard
+
+  # identifies db container
+  sudo docker ps | grep db
+
+  # execs into db container
+  docker exec -it <container id> bash
+
+  # connect to psql using DB username and password
+#+end_src
+** the 4 C's of cloud native security
+*** Cloud
+- datacenter
+- network
+- servers
+*** cluster
+- authentication
+- authorization
+- network policies
+- admission
+*** container
+- restricted images
+- supply chains
+- sandboxing
+- privileged
+*** code security
+* cluster setup and hardening
+** cis benchmarks
+- center for internet security
+- publishes security benchmarks for OS, softwares, ... including docker, kubernetes
+- cis CAT (configuration assessment tool)
+** kube-bench
+** k8s security primitives
+- Admin and dev user access
+  - password file
+  - token file
+- servicve accounts
+  - since 1.24 secret is no longer automatically created
+  - =kubectl create toke <sa>=
+  - for old way, create a secret with annotation =kubernetes.io/service-account.name=<sa>=
+- token request api
+  - audience bound
+  - time bound
+  - object bound
+** TLS
+** TLS in k8s
+#+begin_src bash
+  # generate a new ca.key
+  openssl genrsa -out ca.key 2048
+
+  # generate a csr for ca
+  openssl req -new -key ca.key -subj "/CN=KUBERNETES-CA" -out ca.csr
+
+  # self sign the ca csr
+  openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt
+
+  # generare admin key and get the certificate signed
+  openssl genrsa -out admin.key 2048
+  openssl req -new -key admin.key -subj "/CN=kube-admin" -out admin.csr
+  openssl x509 -req -in admin.csr -CA ca.crt -CAkey ca.key -out admin.crt
+
+  # generate the scheduler certifixate and key
+  openssl genrsa -out scheduler.key 2048
+  openssl req -new -key scheduler.key -subj "/CN=system:kube-scheduler" -out scheduler.csr
+  openssl x509 -req -in scheduler.csr -CA ca.crt -CAkey ca.key -out scheduler.crt
+
+  # generate apiserver key and certificat
+  openssl genrsa -out apiserver.key 2048
+  openssl req -new -key apiserver.key -subj "/CN=system:kube-apiserver" -out apiserver.csr -config openssl.cnf
+  openssl x509 -req -in apiserver.csr -CA ca.crt -CAkey ca.key -out apiserver.crt -extensions v3_req -extfile openssl.cnf
+
+  # inspect service logs to check certificate issues
+  journalctl -u etcd.service -l
+  kubectl logs etcd-master
+
+  # when kube-apiserver is down
+  docker ps -a
+  docker logs <container-id>
+#+end_src
+** Certificates API
+- CertificateSigningRequest
+- =kubectl get csr=
+- controller manager
+** kubeconfig
+** api groups
+- core group =/api=
+- named group =/apis=
+  - API groups =/apps=
+  - version =/v1=
+  - Resource =/deployments=
+** authorization
+- Node authorizer
+  - kubelet
+  - group =SYSTEM:NODES=
+  - name =system:node:node01=
+- ABAC: Attribute based access control
+  - policy definition file
+  - change policy file
+  - restart kube api server
+- RBAC
+  - role
+  - role bindings
+- webhook
+  - open policy agent
+- AlwaysAllow
+- AlwaysDeny
+- =--authorization-mode=Node,RBAC,Webhook= in api server arguments. order matters
+  - if denied, move to next in chain
+  - if allowed, stop there
+- cluster roles and rolebindings
+** kubelet
+- [[./assets/kubelet-security.png]]
+- kubeadm does not automatically deploys the kubelet
+- kubeadm can generate / configure KubeletConfiguration when =join= command is run.
+- =KubeletConfiguration=
+  - =/var/lib/kubelet/kubelet-config.yaml=
+#+begin_src bash
+  # check current configuration
+  ps -aux | grep kubelet
+
+  curl -sk https://localhost:10250/pods
+  curl -sk https://localhost:10250/logs/syslog
+#+end_src
+- ports
+  - 10250: all apis
+  - 10255: read only unauthenticated (metrics)
+    - =--read-only-port=10255= / =readOnlyPort: 10255=
+    - if set to 0, then disabled
+- authntication, disable anonymous
+  - ~--anonymous-auth=false~ / =authentication.anonymous.enabled : false=
+  - x509
+  - api based bearer token
+- authorization
+  - default is ~AlwaysAllow~
+  - other is ~Webhook~
+** kubectl proxy
+- curl http://localhost:8001/api/v1/namespaces/default/service/nginx/proxy
+  - access an nginx service running on k8s via kubectl proxy
+- kubectl port-forward service/nginx 28080:8080
+** securing k8s dashboard
+
+#+begin_src bash
+  #access a k8s dashboard via kubectl proxy
+  curl https://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy
+
+#+end_src
+** verifying platform binaries
+- checksum and hash verification
+- =shasum -a 512 kubernetes.tar.gz= //MAC
+- =sha512sum kubernetes.tar.gz== //linux
+** k8s upgrade
+
+[[./assets/k8s-upgrade-versions.png]]
+
+[[./assets/kubeadm-upgrade.png]]
+
+[[./assets/node-upgrade.png]]
+
+- major.minor.patch
+- control plane components have same k8s version
+  - kube-apiserver --> x
+  - controller-manager --> x, x-1
+  - kube-scheduler  --> x, x-1
+  - kube-proxy --> x, x-1, x-2
+  - kubelet  --> x, x-1, x-2
+  - kubectl --> x-1, x, x+1
+  - etcd and coreDNS have their own versions
+- only 3 recent versions are supported
+- upgrade one minor version at a time
+- changing package repositories to =pkgs.k8s.io=
+*** kubeadm
+#+begin_src bash
+  # upgrade master node 
+  apt-get upgrade -y kubeadm=1.12.0-00
+  kubeadm upgrade plan
+  kubeadm upgrade apply
+
+  # upgrade kubelet on master node
+  apt-get upgrade -y kubelet=1.12.0-00
+  systemctl restart kubelet
+
+  # worker node
+  kubectl drain node-1
+  apt-get upgrade -y kubeadm=1.12.0-00
+  apt-get upgrade -y kubelet=1.12.0-00
+  kubeadm upgrade node config --kubelet-version v1.12.0
+  systemctl restart kubelet
+  kubectl uncordon node-1
+#+end_src
+** ingress
+#+begin_src yaml
+  nginx.ingress.kubernetes.io/rewrite-target: /
+  nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#+end_src
+[[./assets/ingress.png]]
+[[./assets/ingress-2.png]]
+- multiple paths under on rule
+- multiple hosts separate rule for each
+#+begin_src bash
+  kubectl create ingress  --rule="host/path=service:port"
+  kubectl create ingress ingress-test --rule="wear.my-online-store.com/wear*=wear-service:80"
+#+end_src
+** docker service configuration
+[[./assets/docker-service-config.png]]
+#+begin_src bash
+  systemctl start docker
+  systemctl status docker
+  systemctl stop docker
+
+  dockerd --debug \
+          --host=tcp://192.168.35.45:2376 \
+          --tls=true \
+          --tlscert=/var/docker/server.pem \
+          --tlskey=/var/docker/serverkey.pem
+  # /var/run/docker.sock
+
+  export DOCKER_HOST="tcp://192.168.35.45:2376" #2375 for unencrypted traffic
+  export DOCKER_TLS=true
+  export DOCKER_TLS_VERIFY=true
+  docker ps #drop certs in ~/.docker directory
+docker --tlscert=<> --tlskey=<> --tlscacert=<> ps
+#+end_src
+#+begin_src JSON
+#/etc/docker/daemon.json
+{
+"debug" : true,
+"hosts" : ["tcp://192.168.35.45:2376"],
+"tls" : true,
+"tlscert": "/var/docker/server.pem",
+"tlskey" : "/var/docker/serverkey.pem",
+"tlsverify" : true,
+"tlscacert" : "/var/docker/caserver.pem"
+}
+#+end_src
+- unix socket =/var/run/docker.sock=
+*** securing docker server / host
+- disable password based authentication
+- enable ssh key based authentication
+- disable any unrequired ports
+- determine users who need access
+- for external access, if must
+  - only use non-public facing interfaces
+  - use tls
+** securing node metadata in k8s
+** auditing
+- who made the change
+- when the change was made
+- what change was made
+- how the change was made
+- audit policy
+  - None
+  - metadata
+  - request
+  - request response
+* system hardening
+- least privilege
+- remove obsolete software
+- limit access
+- remove obsolete services
+- restrict / remove obsolete kernel modules
+- identify / fix open ports
+** limit node access
+- private network , vpn access
+- or, restricted access e.g. to certain ip ranges
+*** linux account types
+1. user account
+2. super user account (UID=0)
+3. system accounts (e.g. mail, ssh)
+4. service accounts (e.g. nginx)
+#+begin_src bash
+  #gives info about user
+  id
+
+  # users logged in
+  who
+
+  # last time users logged in
+  last
+#+end_src
+*** access control files
+- located in =/etc/= or =/etcd= directory
+- /etc/passwd
+  - basic info about user
+- /etc/shadow
+  - password
+- /etc/group
+  - info about groups
+#+begin_src bash
+  # disable user access 
+  usermod -s /bin/nologin  michael
+
+  # delete  the user
+  userdel bob
+
+  # remove use from admin group
+  deluser michael admin
+
+  passwd david
+
+  groupdel devs
+
+  useradd -d /opt/sam -s /bin/bash -G admin -u 2328 sam
+#+end_src
+** ssh hardening
+#+begin_src bash
+  ssh <host name or ip>
+  ssh user@<host name or ip>
+  ssh -l username  <host name or ip>
+
+  ssh-copy-id user@host
+
+  #disable ssh for root account
+  vi /etc/ssh/sshd_config
+  PermitRootLogin no
+  PasswordAuthentication no
+
+  systemctl restart sshd
+  systemctl reload sshd
+  service sshd restart
+#+end_src
+** privilege escalation
+[[./assets/sudo.png]]
+[[./assets/sudoers.png]]
+#+begin_src bash
+  # /etc/sudoers
+  adduser
+  visudo
+  sudo vi /etc/sudoers
+
+  jim ALL=(ALL) NOPASSWD:ALL
+  # add jim
+  jim ALL=(ALL) NOPASSWD:ALL
+
+  #/usr/sbin/nologin shell for root
+
+  usermod rob -G admin
+#+end_src
+** remove obsolete / unwanted packages
+- BIOS POST --> BOOT Loader (GRUB2) --> kernel initialisation --> INIT Process (systemd)
+#+begin_src bash
+  systemctl list-units --type service
+  systemctl status apache2
+
+  systemctl stop apache2
+  systemctl disable apache2
+
+  rm /lib/systemd/system/nginx.service
+  apt remove apache2
+
+  apt list --installed
+  apt install wget -y
+#+end_src
+** restrict kernel modules
+#+begin_src bash
+  # add module
+  modprobe pcspkr
+
+  # list all modules
+  lsmod
+
+  # blacklist a module (e.g sctp)
+  cat /etc/modeprobe.d/blacklist.conf
+  blacklist sctp
+
+  # restart after updating the conf file
+  shutdown -r now
+  lsmod | grep sctp
+#+end_src
+** disable open ports
+#+begin_src shell
+  netstat -an | grep -w LISTEN
+  netstat -antp|grep 9090
+  netstat -antpl | grep etcd
+  cat /etc/servcies | grep -w 53
+#+end_src
+** iam
+- root vs non root user
+- policies
+- groups
+- iam role
+  - grant access to an ec2 service
+- aws trust advisor
+- gcp security command center
+- Azure advisor
+** restrict nw access
+*** ufw (Uncomplicated firewall)
+#+begin_src bash
+  apt-get update
+  apt-get install ufw
+  systemctl enable ufw
+  systemctl start ufw
+
+  ufw status
+  ufw default allow outgoing
+  ufw default deny incoming
+  ufw allow from 172.168.238.5 to any port 22 proto tcp
+  ufw allow from 172.168.238.5 to any port 80 proto tcp
+  ufw allow from 172.16.100.0/28 to any port 80 proto tcp
+  ufw deny 8080
+  ufw enable
+  ufw delete deny 8080
+  ufw delete 5 #line number from status
+  ufw status numbered
+  ufw allow 1000:2000/tcp
+  ufw reset
+  ufw allow 22
+  ufw allow from 135.22.65.0/24 to any port 9091 proto tcp
+  ufw disable
+#+end_src
+** linux sys calls
+
+[[./assets/linux-kernel.png]]
+
+#+begin_src bash
+  which strace
+  strace touch /tmp/error.log
+
+  # pid of a service
+  pidof etcd
+
+  # syscalls of an already running process
+  strace -p 3676
+
+  # summarize all sys calls
+  strace -c touch /tmp/error.log
+#+end_src
+** aquasec tracee
+- observe sys calls from containers
+- relies on ebpf
+- run tracee as a docker container
+- Bind mounts
+  - /tmp/tracee (default workspace)
+  - /lib/modules (kernel headers)
+  - /usr/src (kernel headers)
+- capabilities
+  - privileged
+#+begin_src bash
+
+  # use tracee to trace ls command
+  docker run --name tracee --rm --privileged --pid=host \
+       -v /lib/modules:/lib/modules:ro -v /usr/src:/usr/src:ro \
+       -v /tmp/tracee:/tmp/tracee aquasec/tracee:0.4.0 --trace comm=ls
+
+  # run tracee as a docker container to observe sys calls for all new processes on the host
+  sudo docker run --name tracee --rm --privileged --pid=host \
+       -v /lib/modules:/lib/modules:ro -v /usr/src:/usr/src:ro \
+       -v /tmp/tracee:/tmp/tracee aquasec/tracee:0.4.0 --trace pid=new
+
+  # run tracee as a docker container to observe sys calls for all new containers on the host
+  sudo docker run --name tracee --rm --privileged --pid=host \
+       -v /lib/modules:/lib/modules:ro -v /usr/src:/usr/src:ro \
+       -v /tmp/tracee:/tmp/tracee aquasec/tracee:0.4.0 --trace container=new
+#+end_src
+    
+** restricting sys call
+[[./assets/rest-sys-call-1.png]]
+[[./assets/rest-sys-call-2.png]]
+[[./assets/seccomp-blacklist.png]]
+- seccomp : secure computing
+  - [[./k8s/custom-seccomp.yaml][example]]
+|--------+----------|
+| mode 0 | disabled |
+| mode 1 | strict   |
+| mode 2 | filtered |
+|--------+----------|
+
+- docker has a built-in seccomp filter =default.json=
+- whitelist vs blacklist
+- https://github.com/genuinetools/amicontained
+  - container introspection tool
+- seccomp in k8s
+- as of 1.20, k8s does not implement seccomp by default
+- default seccomp profile path
+  - =/var/lib/kubelet/seccomp=
+  - *any localhostProfile will be relative to above path*
+#+begin_src bash
+  grep -i seccomp /boot/config-$(uname -r)
+  #below line implies seccomp is supported by the kernel
+  #CONFIG_SECCOMP=y
+
+  # run a docker container with a specified secccomp profile
+  docker run -it --rm --security-opt seccomp=/root/custom.json \
+       docker/whalesay /bin/sh
+
+  #  check the syscalls allowed in docker by default
+  docker run r.j3ss.co/amicontained amicontained
+  kubectl run amicontained --image r.j3ss.co/amicontained amicontained -- amicontained
+
+  #syscall numbers
+  grep -w 35 /usr/include/asm/unistd_64.h
+#+end_src
+** AppArmor
+- restrict processes e.g. to write to a file or directory
+- linux module
+- installed by default in most linux systems
+| enforce    |
+| complain   |
+| unconfined |
+#+begin_src bash
+  # check if apparmor is installed
+  systemctl status apparmor
+
+  # which all profiles are loaded
+  aa-status
+
+  # utils for managing profiles
+  apt-get install -y apparmor-utils
+
+  #apparmor module must be enabled in all node where containers run
+  cat /sys/module/apparmor/parameters/enabled
+  # a Y indicats app armor module is loaded
+  # Y
+
+  # which all apparmor profiles have been loaded
+  cat /sys/kernel/security/apparmor/profiles
+  cat /etc/apparmor.d/<profile-name>
+
+  #to load a profile
+  apparmor_parser /etc/apparmor.d/<profile-name>
+
+  #to disable a profile
+  apparmor_parser -R /etc/apparmor.d/<profile-name>
+  ln -s /etc/apparmor.d/<profile-name> /etc/apparmor.d/disable/
+
+  # app armor status
+  aa-status
+
+  #
+  aa-genprof /root/add_data.sh
+#+end_src
+
+- k8s
+  - apparmor module must be enabled in all node where containers run
+  - profile must be loaded on all nodes
+  - container runtime must support
+** linux capabilities
+- since linux kernel >= 2.2
+- privileged processes
+- unprivileged processes
+  - capabilities
+#+begin_src bash
+
+  # which capabilities a command needs
+  getcap /usr/bin/ping
+
+  # get capabilities for a running process
+  ps -ef | grep /usr/bin/sshd | grep -v grep
+  getpcaps <pid>
+#+end_src
+
+* Minimize Microservice Vulnerabilities
+** security context
+- can be defined at pod and container level
+- container level takes precedence
+- *capabilities can only be defined at container level*
+** pod security policies
+[[./assets/psp.png]]
+[[./assets/example-psp.png]]
+[[./assets/psp-access.png]]
+- PSP deprecated in 1.25
+  - can also modify the pod spec
+- replaced by Pod security admission and pod security standards
+** admission controllers
+[[./assets/configure-admission-controllers.png]]
+
+[[./assets/addimission-controllers.png]]
+[[./assets/admission-webhook.png]]
+[[./assets/webhook-config.png]]
+#+begin_src bash
+  #check enabled admission controllers
+  kube-apiserver -h | grep enable-admission-plugins
+  kubectl -n kube-system exec kube-apiserver-controlplane -- kube-apiserver -h | grep enable-admission-plugins
+  ps -ef | grep kube-apiserver | grep admission-plugins
+#+end_src
+- validating admission controllers
+- mutating admission controllers
+- mutating admission controllers are invoked first and then the validating admission controllers
+- NodeRestriction - kubelet restrictions 
+- own admission controllers. 2 special admission controllers are available
+  - validating admission webhook
+  - mutating admission webhook
+  - deploy a admission webhook service
+  - configure k8s by =ValidatingWebhookConfiguration=
+** Pod security admission and standards
+- admission controller
+- configured at namespace level
+  - =kubectl label ns abc pod-security.kubernetes.io/<mode>=<security-standard>=
+  - =kubectl label ns abc pod-security.kubernetes.io/enforce=restricted=
+- profile/standard
+  - privileged
+  - baseline
+  - restricted
+- mode
+  - enforce
+  - audit
+  - warn
+** opa in k8s
+- Opa gatekeeper
+- install with k8s apply
+- =k get all -n gatekeeper-system=
+- opa constraint fwk
+  - What
+  - Where
+  - How
+- constraint template
+  - it also creates a crd
+- the use the custom resource for the constraints to be defined
+** opa gatekeeper
+- With OPA Gatekeeper, you can best practices and organizational conventions for your resources in your kubernetes cluster.
+- For example, you can enforce policies like:
+  - All namespaces must have a label that lists a point-of-contact
+  - All images must be from approved repositories
+  - All pods must have resource limits
+
+  #+begin_src yaml
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredlabels
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredLabels
+      validation:
+        # Schema for the `parameters` field
+        openAPIV3Schema:
+          type: object
+          properties:
+            labels:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredlabels
+
+        violation[{"msg": msg, "details": {"missing_labels": missing}}] {
+          provided := {label | input.review.object.metadata.labels[label]}
+          required := {label | label := input.parameters.labels[_]}
+          missing := required - provided
+          count(missing) > 0
+          msg := sprintf("you must provide labels: %v", [missing])
+        }
+
+  #+end_src
+  #+begin_src yaml
+    apiVersion: constraints.gatekeeper.sh/v1beta1
+    kind: K8sRequiredLabels
+    metadata:
+      name: require-tech-label
+    spec:
+      match:
+        kinds:
+          - apiGroups: [""]
+            kinds: ["Pod"]
+        namespaces:
+          - engineering
+      parameters:
+        labels: ["tech"]
+     ---
+     apiVersion: constraints.gatekeeper.sh/v1beta1
+     kind: K8sReplicaLimits
+     metadata:
+       name: replica-limits
+     spec:
+       match:
+         kinds:
+           - apiGroups: ["apps/v1"]
+             kinds: ["Deployment"]
+         parameters:
+           ranges: 
+             - min_replicas: 2
+               max_replicas: 5
+  #+end_src
+** k8s secrets
+** container sandboxing
+[[./assets/cs.png]]
+- kernel is shared
+- each running container is another process on host
+- process id namespace
+** gVisor
+[[./assets/gvisor-2.png]]
+[[./assets/gvisor-1.png]]
+- each container has its own gVisor
+** kata-containers
+- nested virtualization
+  - makes more sense for dedicated or own hardware
+- each container in its own separate lightweight vm
+[[./assets/kata.png]]
+** runtime classes
+[[./assets/image-run.png]]
+[[./assets/various-runtimes.png]]
+
+[[./assets/runtime-class.png]]
+
+[[./assets/rc-in-pod.png]]
+#+begin_src bash
+  docker run --runtime kata -d nginx
+#+end_src
+** mutual tls
+** multi tenancy in k8s
+- multi team vs multi customer
+- level of isolation
+  - control plane isolation
+    - namespaces
+    - access controls
+    - quotas
+  - data plane isolation
+    - networking
+    - storage
+    - node
+** resource quotas
+** network policies
+- inside one rule in =from=
+  - and
+- separate rules in =from=
+  - or
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-policy
+spec:
+  podSelector:
+    matchLabels:
+      name: internal
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          name: payroll
+    ports:
+    - protocol: TCP
+      port: 8080
+  - to:
+    - podSelector:
+        matchLabels:
+          name: mysql
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+#+end_src
+#+begin_src yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+policyTypes:
+- Ingress
+- Egress
+egress:
+- to:
+  - ipBlock:
+      cidr: 192.168.5.10/32
+  ports:
+    protocol: TCP
+    port:80
+ingress:
+- from: # each entry is an OR
+  - podSelector:
+      matchLabels:
+        name: api-pod
+    namespaceSelector:
+      matchLabels:
+        name: prod
+  - ipBlock:
+      cidr: 192.168.10.5/32
+  ports:
+  - protocol: TCP
+    port: 3306
+#+end_src
+#+begin_src yaml
+  # deny all egress traffic outside of cluster
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    name: deny-external-egress
+    namespace: namespace-worker
+  spec:
+    podSelector: {}  # Selects all pods in namespace-worker
+    policyTypes:
+    - Egress
+    egress:
+    # Allow egress to all pods in all namespaces
+    - to:
+      - namespaceSelector: {}  # All namespaces
+        podSelector: {}        # All pods
+
+#+end_src
+#+begin_src yaml
+  # only to pods in a specific namespace
+  apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    name: allow-specific-ingress
+    namespace: namespace-ui
+  spec:
+    podSelector: {}
+    policyTypes:
+    - Ingress
+    ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            namespace: namespace-web
+#+end_src
+** taints and tolerations
+#+begin_src bash
+  # taint a node
+  k taint node node03 team=team-c:NoSchedule
+
+  # remove taint
+  k taint node node03 team-
+
+#+end_src
+** api priority and fairness
+- https://kubernetes.io/docs/concepts/cluster-administration/flow-control/
+- api server request handling
+** pod priority and preemption
+- PriorityClass
+- pod.spec.priorityClassName
+** quality of service
+- guranteed - request and limits are same - evicted last
+- burstable
+- best effort - first to be evicted
+- network QoS
+  - plugins like calico via Network policy
+- storage QoS
+  - control IOPS
+  - storage classes
+** DNS in multi tenant environments
+- =backend.ns-a.svc.cluster.local=
+- update core dns to restrict dns quries to only within ns
+  - =k edit cm coredns -n kube-system=
+  - =fallthrough in-namespace=
+** pod-2-pod encryption
+- data security
+- compliance requirements
+- mitigating insider threats
+- zero trust security model
+- prevent mitm attack
+- confidentiality and integrity
+- enhanced security posture
+- automated key mgmt
+- inter pod comm security
+- adapt to cloud environments
+*** cilium
+- eBPF
+- P2P encyption
+- effective nw policies
+#+begin_src bash
+  # take tcp dump of the pod traffic
+  apt-get update && apt-get install -y tcpdump
+  tcpdump -i eth0 -nn
+
+  # d
+  kubectl -n kube-system exec -ti ds/cilium -- bash
+  cilium-dbg status | grep Encryption
+  apt-get update && apt-get install -y tcpdump
+  tcpdump -n -i cilium_wg0 -X
+#+end_src
+
+#+begin_src bash
+  # install cilium
+  # Add the Cilium Helm repository
+  helm repo add cilium https://helm.cilium.io/
+
+  # Install Cilium with encryption enabled
+  helm install cilium cilium/cilium --version v1.18.0-pre.0 \
+       --namespace kube-system \
+       --set encryption.enabled=true \
+       --set encryption.type=wireguard
+#+end_src
+* supply chain security
+** sbom
+- comprehensive inventory of all components, libraries, and modules within a piece of software.
+** SBOM formats
+#+begin_src shell
+  # install syft
+  curl -sSfL <install.sh url> | sh
+
+  curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+  # generate sbom for image
+  syft image:tag -o spdx-json
+  syft docker.io/kodekloud/webapp-color:latest -o spdx=/root/webapp-spdx.sbom
+  syft docker.io/kodekloud/webapp-color:latest -o cyclonedx-json=/root/webapp-sbom.json
+
+  # generate sbom for source code
+  syft /path/to/src/code -o spdx-json
+
+  # install grype
+  curl -sSfL <install.sh url> | sh
+  curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+  # grype sbom scan
+  grype sbom:nginx-sbom.cyclonedx.json
+
+  #find all critical vulnerabilities
+  jq -r '[.matches[] | select(.vulnerability.severity == "Critical")] | length' /root/grype-report.json
+#+end_src
+- SPDX
+  - licensing
+  - legal compliance
+- CycloneDx
+  - security aspects
+** kubelinter
+#+begin_src bash
+  # downlaod
+  curl -LO https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz
+
+  #extract
+  tar -xvf kube-linter-linux.tar.gz
+#+end_src
+** image security
+#+begin_src bash
+  #nginx ==> docker.io/library/nginx
+  #          <registry server>/user-account/image:tag
+#+end_src
+** whitelist allowed registeries
+[[./assets/image-policy-webhook.png]]
+[[./assets/image-policy-webhook-2.png]]
+- image policy webhook
+#+begin_src yaml
+  # kubeconfig
+  apiVersion: v1
+  kind: Config
+  clusters:
+  - cluster:
+      certificate-authority: /etc/kubernetes/pki/server.crt
+      server: https://image-bouncer-webhook:30080/image_policy
+    name: bouncer_webhook
+  contexts:
+  - context:
+      cluster: bouncer_webhook
+      user: api-server
+    name: bouncer_validator
+  current-context: bouncer_validator
+  preferences: {}
+  users:
+  - name: api-server
+    user:
+      client-certificate: /etc/kubernetes/pki/apiserver.crt
+      client-key:  /etc/kubernetes/pki/apiserver.key
+
+  # image policy webhook
+  apiVersion: apiserver.config.k8s.io/v1
+  kind: AdmissionConfiguration
+  plugins:
+  - name: ImagePolicyWebhook
+    configuration:
+      imagePolicy:
+        kubeConfigFile: /etc/kubernetes/pki/admission_kube_config.yaml
+        allowTTL: 50
+        denyTTL: 50
+        retryBackoff: 500
+      defaultAllow: false
+#+end_src
+#+begin_src yaml
+  - --enable-admission-plugins=NodeRestriction,ImagePolicyWebhook
+  - --admission-control-config-file=/etc/kubernetes/pki/admission_configuration.yaml
+
+#+end_src
+** static analysis yaml
+- kubesec
+#+begin_src bash
+  kubesec scan pod.yaml
+  curl -sSX POST --data-binary @"pod.yaml" https://v2.kubesec.io/scan
+#+end_src
+** scan images for vulnerabilities
+[[./assets/image-scan.png]]
+#+begin_src bash
+  trivy image --severity CRITICAL nginx:1.18.0
+  trivy image --severity CRITICAL,HIGH nginx:1.18.0
+  trivy image --ignore-unfixed nginx:1.18.0
+
+  docker save nginx:1.18.0 > nginx.tar
+  trivy image --input nginx.tar
+  trivy image --input /root/alpine.tar --format json --output /root/alpine.json
+
+  crictl pull public.ecr.aws/docker/library/python:3.12.4
+#+end_src
+** minimize image footprint
+[[./assets/slim-imgs.png]]
+- parent vs base image
+- google container tools distroless
+* monitoring, logging and runtime security
+** performing behavioral analytics of syscalls
+** falco
+[[./assets/falco-arch.png]]
+[[./assets/falco-as-a-pkg.png]]
+[[./assets/falco-as-daemon-set.png]]
+[[./assets/falco-rules.png]]
+[[./assets/falco-list-macros.png]]
+[[./assets/falco-config.png]]
+[[./assets/falco-config-2.png]]
+- uses sysdig filters
+#+begin_src bash
+  #hot reload
+  cat /var/run/falco.pid
+  kill -1 $(cat /var/run/falco.pid)
+
+  # check falco status when running as a package
+  systemctl status falco
+  journalctl -fu falco
+
+  #falco config file location
+  #/etc/falco/falco.yml
+  
+  #/usr/lib/systemd/system/falco.service
+
+  #check falco logs in syslog
+  cat /var/log/syslog | grep falco
+
+  #crictl search by container id
+  crictl ps -id {container id}
+
+  #crictl search by pod id
+  crictl pods -id {pod id}
+
+  #crictl search a pod by name
+  crictl pods | grep {pod name}
+
+  #crictl inspect a container
+  crictl inspect {container id}
+
+  #get pods with name param
+  crictl pods --name {pod name}
+
+  #list container by pod ids
+  crictl ps --pod {pod id}
+#+end_src
+** mutable vs immutable infrastructure
+- configuration drift
+- ensure immutability of containers
+#+begin_src yaml
+securityContext:
+  readOnlyRootFilesystem: true
+volumeMounts:
+- name: cacheVolume
+  mountPath: /var/cache/nginx
+- name: runtime-volume
+  mountPath: /var/run
+volumes:
+- name: cacheVolume
+  emptyDir: {}
+- name: runtime-volume
+  emptyDir: {}
+#+end_src
+[[./assets/privileged-true-effect.png]]
+- =privileged= was able to still update root and host files despite =readonlyRootFilesystem=
+- dont's
+  - =readonlyRootFilesystem= set to false
+  - =privileged= set to true
+  - =runAsUser= 0 (root)
+** audit logs
+[[./assets/request-lifecycle.png]]
+[[./assets/audit-policy.png]]
+[[./assets/enable-auditing.png]]
+- level
+  - None
+  - Metadata
+  - Request
+  - RequestResponse
+

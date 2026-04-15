@@ -7,6 +7,19 @@
   - nodePort is a free port from range *30000 - 32767*
   - same nodePort on all nodes
   - service acts as loadbalancer
+* docker vs containerd
+- ctr
+- nerdctl
+  - user friendly
+  - suports
+    - encrypted container images
+    - lazy pulling
+    - p2p image distribution
+    - image signing and verification
+    - namespaces in k8s
+- crictl
+  - based on cri
+  - inspect and debug containers
 * k8s master
 - collection of 3 processes managing cluster state
 ** kube-scheduler
@@ -22,98 +35,20 @@
   - *leader-elect=true* --> only one of the multiple scheduler copies will be active
   - *lock-object-name* --> use a different scheduler and make it active
 - ~pod.spec.schedulerName~
+- manual scheduling
 ** kube-apiserver
 ** kube-controller-manager
-* core
-** taints and tolerations
-- *Taints* are set on nodes
-  - =kubectl taint nodes node-name key=value:taint-effect=
-  - ~taint-effect~ describe what happens to POD that do not tolerate the taint
-    - *NoSchedule*  no new pods will be scheduled that do not tolerate
-    - *PreferNoSchedule* ->
-    - *NoExecute*  No new pods and evict those that are already there and do not tolerate
-  - Taints only restrict having certain kind of pods. It does not gurantee that pods will always be placed on those nodes.to acheive that, we need to use *nodeAffinitty*
-  - Master has a taint that prevents any nodes to be sechduled
-- *Tolerations* are set on pods
-  - ~pod.spec.tolerations~
-** node selectors
-- label the node
-- matches the labels on the nodes
-** node affinity
-** static pods
-- ~/etc/kubernetes/manifests~
-- provided in kubelet configuration
-** application lifecycle management
-#+BEGIN_SRC shell
-  kubectl rollout history deployment/myapp
-#+END_SRC
-- deployment strategy
-  - recreate
-  - rolling update
-** command and args
-- docker
-  - ~entrypoint~ = executable
-  - ~command~ = args
-  - docker run only takes arguments by default
-  - to override entrypoint ~docker run --entrypoint <>~
-- k8s
-  - *docker entrypoint = container command*
-  - *docker command = container args*
-** secrets
-- secret as volume
-  - Also the way kubernetes handles secrets. Such as:
-  - A secret is only sent to a node if a pod on that node requires it.
-  - Kubelet stores the secret into a tmpfs so that the secret is not written to disk storage.
-  - Once the Pod that depends on the secret is deleted, kubelet will delete its local copy of the secret data as well.
-* monitoring
-- *cAdvisor* is responsible for getting metrics from the pods and make them available to metrics server
-* k8s node
-- kubelet /communicates with k8s master/
-- kube-proxy /a network proxy which reflects k8s networking services on each node/
-* cluster maintenance
-** os upgrade
-- *pod eviction timeout* = time controller manager waits for the worker node to respond before it is considered dead. Then the pods are evicted from that node.
-- *drain a node* ==> pods from that node are terminated gracefully and recreated on another node. And the node is marked as un-schedulable.
-- *cordon* mark node as unschedulable so new pods are not scheduled, old ones still remain
-- *uncordon* a node to make it schedulable again.
-** k8s hybrid versions
-|--------------------+-----------+--------------------|
-| components         | version   |                    |
-|--------------------+-----------+--------------------|
-| kube-apiserver     | x         | 1.10               |
-| controller-manager | x-1       | 1.9 or 1.10        |
-| kube-scheduler     | x-1       | 1.9 or 1.10        |
-| kubelet            | x-2       | 1.8, 1.9 or 1.10   |
-| kube-proxy         | x-2       | 1.8, 1.9 or 1.10   |
-| kubectl            | x+1 > x-1 | 1.11, 1.10, or 1.9 |
-|--------------------+-----------+--------------------|
+- contains all controllers
+** etcd
+- get all keys
+  - =kubect -n kube-system exec etcd-master etcdctl get / --prefix --keys-only=
+- ~export ETCDCTL_API=3~
+- full command
+  #+begin_src 
+kubectl exec etcd-master -n kube-system -- sh -c "ETCDCTL_API=3 etcdctl get / --prefix --keys-only --limit=10 --cacert /etc/kubernetes/pki/etcd/ca.crt --cert /etc/kubernetes/pki/etcd/server.crt  --key /etc/kubernetes/pki/etcd/server.key"
+#+end_src
 
-- at any time, k8s supports only recent latest 3 minor releases
-- upgrade one minor version at a time
-- ~kubeadm upgrade plan~
-  - does not upgrade kubelet. It has to be done manually
-  - First upgrade kubeadm
-  - ~apt-get upgrade -y kubeadm=1.12.0-00~
-  - ~kubeadm upgrade apply~ 
-- upgrade process
-  - first upgrade master (all management plan components)
-  - they will be down
-  - all user applications will be running
-- various strategies to upgrade worker nodes
-  - upgrade all at once (downtime)
-  - upgrade one node at a time
-  - add new nodes with the newer version. Move workload to a newer node. remove the old version node
-- to uppdate kubelet
-  - ~apt-get upgrade -y kubelet=1.12.0-00~
-  - ~systemctl restart kubelet~
-#+BEGIN_SRC shell
-  apt-get upgrade -y kubeadm=1.12.0-00
-  apt-get upgrade -y kubelet=1.12.0-00
-  kubeadm upgrade node config --kubelet version v1.12.0
-  systemctl restart kubelet
-#+END_SRC
-* backup and restore
-** etcd backup/restore (etcd running as a static pod)
+*** etcd backup/restore (etcd running as a static pod)
 - take etcd backup
 #+BEGIN_SRC shell
   ETCDCTL_API=3 etcdctl snapshot save -h #check the options
@@ -176,6 +111,97 @@ watch "docker ps -a | grep etcd"
 - reload service daemon
 - restart etcd
 - start the kube-apiserver
+* k8s node
+- kubelet /communicates with k8s master/
+- kube-proxy /a network proxy which reflects k8s networking services on each node/
+  - service
+  - ip table routing rules
+* core
+** taints and tolerations
+- *Taints* are set on nodes
+  - =kubectl taint nodes node-name key=value:taint-effect=
+  - ~taint-effect~ describe what happens to POD that do not tolerate the taint
+    - *NoSchedule*  no new pods will be scheduled that do not tolerate
+    - *PreferNoSchedule* ->
+    - *NoExecute*  No new pods and evict those that are already there and do not tolerate
+  - Taints only restrict having certain kind of pods. It does not gurantee that pods will always be placed on those nodes.to acheive that, we need to use *nodeAffinitty*
+  - Master has a taint that prevents any nodes to be sechduled
+- *Tolerations* are set on pods
+  - ~pod.spec.tolerations~
+** node selectors
+- label the node
+- matches the labels on the nodes
+** node affinity
+** static pods
+- ~/etc/kubernetes/manifests~
+- provided in kubelet configuration
+** application lifecycle management
+#+BEGIN_SRC shell
+  kubectl rollout history deployment/myapp
+#+END_SRC
+- deployment strategy
+  - recreate
+  - rolling update
+** command and args
+- docker
+  - ~entrypoint~ = executable
+  - ~command~ = args
+  - docker run only takes arguments by default
+  - to override entrypoint ~docker run --entrypoint <>~
+- k8s
+  - *docker entrypoint = container command*
+  - *docker command = container args*
+** secrets
+- secret as volume
+  - Also the way kubernetes handles secrets. Such as:
+  - A secret is only sent to a node if a pod on that node requires it.
+  - Kubelet stores the secret into a tmpfs so that the secret is not written to disk storage.
+  - Once the Pod that depends on the secret is deleted, kubelet will delete its local copy of the secret data as well.
+* monitoring
+- *cAdvisor* is responsible for getting metrics from the pods and make them available to metrics server
+- 
+* cluster maintenance
+** os upgrade
+- *pod eviction timeout* = time controller manager waits for the worker node to respond before it is considered dead. Then the pods are evicted from that node.
+- *drain a node* ==> pods from that node are terminated gracefully and recreated on another node. And the node is marked as un-schedulable.
+- *cordon* mark node as unschedulable so new pods are not scheduled, old ones still remain
+- *uncordon* a node to make it schedulable again.
+** k8s hybrid versions
+|--------------------+-----------+--------------------|
+| components         | version   |                    |
+|--------------------+-----------+--------------------|
+| kube-apiserver     | x         | 1.10               |
+| controller-manager | x-1       | 1.9 or 1.10        |
+| kube-scheduler     | x-1       | 1.9 or 1.10        |
+| kubelet            | x-2       | 1.8, 1.9 or 1.10   |
+| kube-proxy         | x-2       | 1.8, 1.9 or 1.10   |
+| kubectl            | x+1 > x-1 | 1.11, 1.10, or 1.9 |
+|--------------------+-----------+--------------------|
+
+- at any time, k8s supports only recent latest 3 minor releases
+- upgrade one minor version at a time
+- ~kubeadm upgrade plan~
+  - does not upgrade kubelet. It has to be done manually
+  - First upgrade kubeadm
+  - ~apt-get upgrade -y kubeadm=1.12.0-00~
+  - ~kubeadm upgrade apply~ 
+- upgrade process
+  - first upgrade master (all management plan components)
+  - they will be down
+  - all user applications will be running
+- various strategies to upgrade worker nodes
+  - upgrade all at once (downtime)
+  - upgrade one node at a time
+  - add new nodes with the newer version. Move workload to a newer node. remove the old version node
+- to uppdate kubelet
+  - ~apt-get upgrade -y kubelet=1.12.0-00~
+  - ~systemctl restart kubelet~
+#+BEGIN_SRC shell
+  apt-get upgrade -y kubeadm=1.12.0-00
+  apt-get upgrade -y kubelet=1.12.0-00
+  kubeadm upgrade node config --kubelet version v1.12.0
+  systemctl restart kubelet
+#+END_SRC
 * security
 ** TLS basics
 - symmetric and asymmetric encryption
@@ -227,8 +253,8 @@ watch "docker ps -a | grep etcd"
   openssl x509 -req -in admin.csr -CA ca.crt -CAkey ca.key -out admin.crt
 #+END_SRC
 *** same process for 
-- /CN=SYSTEMKUBE-SCHEDULER
-- /CN=SYSTEMKUBE-COTROLLER-MANGER
+- /CN=SYSTEM:KUBE-SCHEDULER
+- /CN=SYSTEM:KUBE-COTROLLER-MANGER
 - /CN=KUBE-PROXY 
 *** kube api server
 #+BEGIN_SRC shell
@@ -252,12 +278,12 @@ DNS.1 = kubernetes
 DNS.2 = kubernetes.default
 DNS.3 = kubernetes.default.svc
 DNS.4 = kubernetes.default.svc.cluster.local
-IP.1 = x.x.x.x
-IP.2 = y.y.y.y
+IP.1 = x.x.x.x #10.96.0.1
+IP.2 = y.y.y.y #172.17.0.87
 #+END_SRC
 *** kubelet
 - certs named node01, node02, ...
-- configure in kubelet-conig.yaml
+- configure in kubelet-config.yaml
 - nodes are system components, so CN starts with /SYSTEM/
   - e.g. */CN=system:node:node01*
   - and group name is *system:nodes*
@@ -271,6 +297,7 @@ kubectl logs
 docker ps -a
 docker logs <container id>
 #+END_SRC
+** certificate api
 ** kubeconfig
 - clusters
 - users
@@ -436,23 +463,27 @@ ip -n red link #execute command on network namespace
 
 - handy commands
 #+BEGIN_SRC shell
-ip link
+  ip link
 
-ip addr
+  ip addr
 
-ip addr add 192.168.1.10/24 dev eth0
+  ip addr add 192.168.1.10/24 dev eth0
 
-ip route
+  ip route
 
-ip route add 192.168.1.0/24 via 192.168.2.1
+  ip route add 192.168.1.0/24 via 192.168.2.1
 
-cat /proc/sys/net/ipv4/ip_forward
+  cat /proc/sys/net/ipv4/ip_forward
 
-arp
+  arp
 
-netstat -plnt
+  netstat -plnt
 
-route
+  route
+
+  ip addr show weave
+
+  iptables -L -t nat | grep db-service
 #+END_SRC
 ** pod networking
 - every pod has an ip address
@@ -473,7 +504,7 @@ route
   - usersapces, ipvs or iptables
   - ~--service-cluster-ip-range=10.96.0.0/12~ ==> ~10.96.0.0 --> 10.111.255.255~
   - *iptables*
-    - ~iptables -L -t net | grep db-service~
+    - ~iptables -L -t nat | grep db-service~
     - ~/cat /var/log/kube-proxy.log~
 - service details
   - is a virtual object
@@ -569,9 +600,10 @@ route
 - =service kubelet start=
 * json/yaml
 - root element is denoted by ~$~
+- 
 #+BEGIN_SRC shell
   $[0]
-  $[?(@ > 40)]
+  $[?(@ > 40)] #get all elements in list > 40
   $[?(@ == 40)]
   $[?(@ != 40)]
   $[?(@ in [40,43,66])]
@@ -582,8 +614,8 @@ route
   $.*.wheels[*].model
   $[0:8] #get first eight items
   $[0:8:2] #get items from 0 to 8 with step value of 2 i.e. 0,2,4,6
-  $[-1] #last item in th elist
-  $[-1] #last item
+  $[-1:] #last item in th elist
+  $[-1:0] #last item
   $[-3:] last three items
 
   kubectl get pods -o jsonpath='{.items[0].spec.containers[0].image}'
